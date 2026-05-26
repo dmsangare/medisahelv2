@@ -1,0 +1,123 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. Patient Directory
+model Patient {
+  id                 String               @id @default(dbgenerated())
+  nom                String
+  prenom             String
+  sexe               String
+  dateNaissance      DateTime
+  telephone          String
+  adresse            String
+  profession         String
+  groupeSanguin      String
+  allergies          String?
+  assurance          String               @default("Aucune") 
+  photoUrl           String?
+  contactUrgenceNom  String?
+  contactUrgenceTel  String?
+  isArchive          Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  appointments       Appointment[]
+  hospitalizations   Hospitalization[]
+  labTests           LabTest[]
+  medicalRecords     MedicalRecord[]
+}
+
+// 2. Schedule Appointments
+model Appointment {
+  id         String   @id @default(uuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id])
+  medecin    String
+  date       String
+  heure      String
+  salle      String
+  statut     String   @default("Confirmé") // "Confirmé", "En attente", "Réalisé", "Annulé"
+  notes      String?
+  createdAt  DateTime @default(now())
+}
+
+// 3. Complete Hospital Room Admissions
+model Hospitalization {
+  id                 String   @id @default(uuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id])
+  chambre            String
+  lit                String
+  service            String
+  dateEntree         DateTime @default(now())
+  dateSortie         DateTime?
+  statut             String   @default("Occupé") // "Occupé", "Sorti", "Maintenance"
+  temperature        Float?
+  frequenceCard      Int?
+  soinsInfirmiers    String[] @default([])
+}
+
+// 4. Laboratory examinations
+model LabTest {
+  id                 String   @id @default(uuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id])
+  nomAnalyse         String
+  typeExamen         String
+  dateDemande        DateTime @default(now())
+  statut             String   @default("En attente") // "En attente", "Validé"
+  resultatObtenu     String?
+  biologisteValid    String?
+}
+
+// 5. Medical Records (DME)
+model MedicalRecord {
+  id                 String   @id @default(uuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id])
+  motif              String
+  diagnostic         String
+  codeCIM10          String
+  prescription       String
+  notesCliniques     String
+  pdfCertificatUrl   String?
+  createdAt          DateTime @default(now())
+}
+
+// 6. Pharmacy Stocks manager
+model StockItem {
+  id                 String   @id @default(uuid())
+  designation        String
+  numeroLot          String   @unique
+  quantite           Int
+  seuilAlerte        Int      @default(5)
+  datePeremption     DateTime
+  fournisseur        String
+  updatedAt          DateTime @updatedAt
+}
+
+// 7. HR Presences
+model StaffPresence {
+  id                 String   @id @default(uuid())
+  nomPrenom          String
+  role               String
+  date               String
+  heureArrivee       String
+  statut             String   @default("Présent") // "Présent", "Retard", "Absent"
+}
+
+// 8. Audits logs (Immutable records)
+model AuditLog {
+  id                 String   @id @default(uuid())
+  timestamp          DateTime @default(now())
+  user               String
+  role               String
+  action             String
+  details            String
+  ip                 String
+}

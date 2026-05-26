@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  # 1. Base PostgreSQL database for offline persistence
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: medishahel_db
+    restart: always
+    environment:
+      POSTGRES_USER: medishahel_admin
+      POSTGRES_PASSWORD: LocalSecurePassword2026!
+      POSTGRES_DB: medishahel_prod
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - medishahel_net
+
+  # 2. Complete Node.js Application
+  medishahel-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: medishahel_app
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://medishahel_admin:LocalSecurePassword2026!@postgres-db:5432/medishahel_prod?schema=public
+      - NODE_ENV=production
+      - PORT=3000
+    depends_on:
+      - postgres-db
+    ports:
+      - "3000:3000"
+    networks:
+      - medishahel_net
+
+  # 3. Local Nginx Reverse Proxy for caching, SSL termination, and router rules
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: medishahel_proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - medishahel-app
+    networks:
+      - medishahel_net
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  medishahel_net:
+    driver: bridge

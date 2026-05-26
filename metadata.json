@@ -1,0 +1,6 @@
+{
+  "name": "Medishahel HIS",
+  "description": "Système d’Information Sanitaire Intelligent pour Cliniques, Cabinets Médicaux & Centres Hospitaliers au Mali - V2",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
