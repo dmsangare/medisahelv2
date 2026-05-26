@@ -20,8 +20,10 @@ import {
   MailRecord, 
   TriageRecord,
   UserRole,
+  UserAccount,
   ClinicBranding,
-  AuditLog
+  AuditLog,
+  Appointment
 } from "./types";
 import { 
   INITIAL_PATIENTS,
@@ -50,6 +52,13 @@ import ConsultationView from "./components/ConsultationView";
 import BillingView from "./components/BillingView";
 import SpecializedModulesView from "./components/SpecializedModulesView";
 import BrandingSettings from "./components/BrandingSettings";
+import AgendaView from "./components/AgendaView";
+import HospitalisationView from "./components/HospitalisationView";
+import RhPaieView from "./components/RhPaieView";
+import CourrierView from "./components/CourrierView";
+import TeleconsultationView from "./components/TeleconsultationView";
+import RapportsView from "./components/RapportsView";
+import MutuellesView from "./components/MutuellesView";
 
 import { 
   Activity, 
@@ -71,7 +80,12 @@ import {
   Mail,
   TrendingUp,
   FlaskConical,
-  ClipboardList
+  ClipboardList,
+  Bed,
+  Calendar,
+  Video,
+  UserCheck,
+  Shield
 } from "lucide-react";
 
 export default function App() {
@@ -86,9 +100,12 @@ export default function App() {
   // Clinic Brand States (Initialized from server or offline fallback)
   const [clinicBrand, setClinicBrand] = useState<ClinicBranding>({
     name: "MédiSahel Clinique",
+    appName: "MEDISHAHEL",
     slogan: "L'excellence des soins au cœur du Sahel",
     primaryColor: "#0284c7",
     secondaryColor: "#0f766e",
+    logoUrl: "",
+    faviconUrl: "💉",
     activeModules: {
       patients: true,
       rdv: true,
@@ -110,7 +127,7 @@ export default function App() {
 
   // Global Lists loaded from local cache
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [appointments, setAppointments] = useState([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [records, setRecords] = useState([]);
   const [beds, setBeds] = useState<BedAllocation[]>([]);
   const [labTests, setLabTests] = useState<LabTest[]>([]);
@@ -121,6 +138,7 @@ export default function App() {
   const [mails, setMails] = useState<MailRecord[]>([]);
   const [triages, setTriages] = useState<TriageRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [users, setUsers] = useState<UserAccount[]>([]);
 
   // Active view
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -157,6 +175,7 @@ export default function App() {
     setPresences(loadFromLocal("presences", INITIAL_PRESENCE));
     setMails(loadFromLocal("mails", INITIAL_MAILS));
     setTriages(loadFromLocal("triages", INITIAL_TRIAGE));
+    setUsers(loadFromLocal("users", HOSPITAL_STAFF_ACCOUNTS));
     setOfflineQueue(getOfflineQueue());
 
     // 3. Fetch logs
@@ -188,12 +207,14 @@ export default function App() {
   };
 
   // Log action on server & locally
-  const logSystemAction = async (action: string, details: string) => {
+  const logSystemAction = async (action: string, details: string, oldValue?: string, newValue?: string) => {
     const logBody = {
       user: activeUser,
       role: activeRole,
       action,
-      details
+      details,
+      oldValue: oldValue || "",
+      newValue: newValue || ""
     };
 
     if (!isOffline) {
@@ -219,42 +240,85 @@ export default function App() {
       role: activeRole,
       action: `${action} (Caché localement)`,
       details,
-      ip: "127.0.0.1 (Local)"
+      ip: "127.0.0.1 (Local)",
+      oldValue: oldValue || "",
+      newValue: newValue || ""
     };
     localLogs.unshift(fallbackLog);
     saveToLocal("audit_logs_local", localLogs);
     setAuditLogs(prev => [fallbackLog, ...prev]);
   };
 
+  const getCurrentUserAccount = (): UserAccount | undefined => {
+    const activeList = users.length > 0 ? users : HOSPITAL_STAFF_ACCOUNTS;
+    return activeList.find(acc => acc.role === activeRole && acc.name === activeUser) 
+        || activeList.find(acc => acc.role === activeRole);
+  };
+
   // Change staff user on the fly
   const handleRoleChange = (roleName: UserRole) => {
-    const matched = HOSPITAL_STAFF_ACCOUNTS.find(acc => acc.role === roleName);
+    const activeList = users.length > 0 ? users : HOSPITAL_STAFF_ACCOUNTS;
+    const matched = activeList.find(acc => acc.role === roleName);
     if (matched) {
+      if (!matched.isActive) {
+        alert(`ACCÈS REFUSÉ : Le compte de ${matched.name} (${roleName}) est VERROUILLÉ suite aux politiques de gouvernance rigoureuse.`);
+        return;
+      }
       setActiveRole(roleName);
       setActiveUser(matched.name);
-      logSystemAction("Changement de session", `Session ouverte sous le profil ${roleName}`);
+      logSystemAction("Changement de session", `Session ouverte sous le profil ${roleName} (${matched.name})`);
     }
   };
 
   // Check RBAC limits on clicked navigation
   const isAuthorized = (tab: string): boolean => {
-    if (activeRole === "Administrateur Système") return true;
+    const acc = getCurrentUserAccount();
+    if (!acc) return false;
+    
+    // 1. Check active status
+    if (!acc.isActive) return false;
 
-    if (tab === "settings") return false; // Exclusively SuperAdmin
+    // 2. Check Horaire restrictions
+    if (acc.allowedHoursStart && acc.allowedHoursEnd) {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const [sh, sm] = acc.allowedHoursStart.split(":").map(Number);
+      const [eh, em] = acc.allowedHoursEnd.split(":").map(Number);
+      if (sh !== undefined && eh !== undefined) {
+        const startMin = sh * 60 + (sm || 0);
+        const endMin = eh * 60 + (em || 0);
+        if (currentMinutes < startMin || currentMinutes > endMin) {
+          return false; // outside hours
+        }
+      }
+    }
 
-    if (activeRole === "Caissier") {
-      return ["dashboard", "billing"].includes(tab);
+    // 3. SysAdmin always has access to settings
+    if (acc.role === "Administrateur Système" && tab === "settings") return true;
+    if (acc.role !== "Administrateur Système" && tab === "settings") return false;
+
+    // 4. Custom overrides check: if account has allowedModules defined
+    if (acc.allowedModules && acc.allowedModules.length > 0) {
+      return acc.allowedModules.includes(tab);
     }
-    if (activeRole === "Laborantin" || activeRole === "Radiologue") {
-      return ["dashboard", "specialized"].includes(tab);
-    }
-    if (activeRole === "Réceptionniste") {
-      return ["dashboard", "patients", "specialized"].includes(tab);
-    }
-    if (activeRole === "Médecin" || activeRole === "Sage-femme" || activeRole === "DG") {
-      return true; // Large medical authorization
-    }
-    return false;
+
+    // 5. Default Role permissions
+    const defaultModules: Record<UserRole, string[]> = {
+      "Administrateur Système": ["dashboard", "patients", "specialized", "agenda", "hospitalisation", "rh-paie", "courrier"],
+      "Médecin": ["dashboard", "patients", "consultation", "specialized", "agenda", "hospitalisation", "teleconsultation", "rapports"],
+      "Infirmier": ["dashboard", "patients", "agenda", "hospitalisation", "specialized", "courrier"],
+      "Sage-femme": ["dashboard", "patients", "consultation", "agenda", "hospitalisation", "teleconsultation"],
+      "Aide-soignant": ["dashboard", "patients", "hospitalisation", "agenda"],
+      "Laborantin": ["dashboard", "specialized"],
+      "Radiologue": ["dashboard", "specialized"],
+      "Pharmacien": ["dashboard", "specialized"],
+      "Réceptionniste": ["dashboard", "patients", "agenda", "courrier"],
+      "Caissier": ["dashboard", "billing", "mutuelles", "rapports"],
+      "DG": ["dashboard", "rapports", "patients", "agenda", "billing", "hospitalisation", "courrier", "mutuelles"]
+    };
+
+    const modules = defaultModules[acc.role] || [];
+    return modules.includes(tab);
   };
 
   // Synchronise queue to Local Server
@@ -486,9 +550,146 @@ export default function App() {
     saveToLocal("presences", updated);
   };
 
+  // 8. Hospitalisation Lits Admissions & Closures
+  const handleAdmitPatient = (bedId: string, patientId: string) => {
+    const pat = patients.find(p => p.id === patientId);
+    const updated = beds.map(b => {
+      if (b.id === bedId) {
+        return {
+          ...b,
+          statut: "Occupé" as const,
+          patientId,
+          patientNom: pat ? `${pat.nom.toUpperCase()} ${pat.prenom}` : "Patient",
+          dateAdmission: new Date().toISOString().split("T")[0],
+          temperature: 37.0,
+          frequenceCardiaque: 72,
+          soinsInfirmiersLogs: ["Patient admis dans le service d'hospitalisation locale."]
+        };
+      }
+      return b;
+    });
+    setBeds(updated);
+    saveToLocal("beds", updated);
+    logSystemAction("Hospitalisation", `Lit ${bedId} occupé par le patient ${patientId}`);
+  };
+
+  const handleDischargePatient = (bedId: string) => {
+    const updated = beds.map(b => {
+      if (b.id === bedId) {
+        return {
+          ...b,
+          statut: "Libre" as const,
+          patientId: undefined,
+          patientNom: undefined,
+          dateAdmission: undefined,
+          temperature: undefined,
+          frequenceCardiaque: undefined,
+          soinsInfirmiersLogs: []
+        };
+      }
+      return b;
+    });
+    setBeds(updated);
+    saveToLocal("beds", updated);
+    logSystemAction("Hospitalisation", `Sortie d'hospitalisation et libération du lit ${bedId}`);
+  };
+
+  const handleAddNurseLog = (bedId: string, log: string) => {
+    const updated = beds.map(b => {
+      if (b.id === bedId) {
+        return {
+          ...b,
+          soinsInfirmiersLogs: [...(b.soinsInfirmiersLogs || []), log]
+        };
+      }
+      return b;
+    });
+    setBeds(updated);
+    saveToLocal("beds", updated);
+  };
+
+  const handleUpdateTempAndPulse = (bedId: string, temp: number, pulse: number) => {
+    const updated = beds.map(b => {
+      if (b.id === bedId) {
+        return {
+          ...b,
+          temperature: temp,
+          frequenceCardiaque: pulse
+        };
+      }
+      return b;
+    });
+    setBeds(updated);
+    saveToLocal("beds", updated);
+  };
+
+  // 9. Agenda & Appointment booking handlers
+  const handleAddAppointment = (data: Omit<Appointment, "id" | "createdAt">) => {
+    const nextId = `rdv-${Date.now().toString().slice(-3)}`;
+    const newAppt: Appointment = {
+      ...data,
+      id: nextId,
+      createdAt: new Date().toISOString()
+    };
+    const updated = [newAppt, ...appointments];
+    setAppointments(updated);
+    saveToLocal("appointments", updated);
+
+    if (isOffline) {
+      addToOfflineQueue({
+        type: "RDV",
+        action: "CREATE",
+        payload: newAppt,
+        timestamp: new Date().toISOString()
+      });
+      setOfflineQueue(getOfflineQueue());
+    }
+
+    logSystemAction("Planification RDV", `Rendez-vous créé pour le patient ${data.patientNom}`);
+  };
+
+  const handleUpdateAppointmentStatus = (id: string, newStatus: Appointment["statut"]) => {
+    const updated = appointments.map(appt => {
+      if (appt.id === id) {
+        return { ...appt, statut: newStatus };
+      }
+      return appt;
+    });
+    setAppointments(updated);
+    saveToLocal("appointments", updated);
+    logSystemAction("Rendez-vous", `Mise à jour statut RDV #${id} en: ${newStatus}`);
+  };
+
+  // 10. Courier Mail Registry handler
+  const handleAddMail = (data: Omit<MailRecord, "id" | "numeroCourrier">) => {
+    const nextId = `mail-${Date.now().toString().slice(-3)}`;
+    const num = `CR-${new Date().getFullYear()}-${String(mails.length + 101).padStart(4, "0")}`;
+    const newMail: MailRecord = {
+      ...data,
+      id: nextId,
+      numeroCourrier: num
+    };
+    const updated = [newMail, ...mails];
+    setMails(updated);
+    saveToLocal("mails", updated);
+    logSystemAction("Registre Courrier", `Courrier '${num}' enregistré (${data.type})`);
+  };
+
   // SuperAdmin Brand Editing update
   const handleSaveBranding = async (newB: ClinicBranding) => {
+    const oldName = clinicBrand.name;
+    const oldSlogan = clinicBrand.slogan;
+    const oldPrimary = clinicBrand.primaryColor;
+    const oldModules = Object.keys(clinicBrand.activeModules).filter(k => clinicBrand.activeModules[k]).join(", ");
+    
+    const newName = newB.name;
+    const newSlogan = newB.slogan;
+    const newPrimary = newB.primaryColor;
+    const newModules = Object.keys(newB.activeModules).filter(k => newB.activeModules[k]).join(", ");
+
     setClinicBrand(newB);
+    saveToLocal("clinicBranding", newB as any);
+
     if (!isOffline) {
       try {
         await fetch("/api/clinics/brand", {
@@ -500,7 +701,16 @@ export default function App() {
         console.log("Offline state, saved locally.");
       }
     }
-    logSystemAction("Paramètres généraux", "Mise à jour de la configuration de marque");
+
+    const diffOld = `Nom: ${oldName} | Slogan: ${oldSlogan} | Couleur: ${oldPrimary} | Modules: ${oldModules}`;
+    const diffNew = `Nom: ${newName} | Slogan: ${newSlogan} | Couleur: ${newPrimary} | Modules: ${newModules}`;
+
+    logSystemAction(
+      "Paramètres généraux", 
+      "Mise à jour de la configuration de marque, favicon & modules",
+      diffOld,
+      diffNew
+    );
   };
 
   const handlePurgeDatabase = (moduleKey: string) => {
@@ -519,18 +729,77 @@ export default function App() {
     }
   };
 
-  // universal Ctrl+K queries filter
-  const commandQueries = [
-    { label: "Ouvrir le Tableau de Bord Général", action: () => { setActiveTab("dashboard"); setShowSearchPalette(false); } },
-    { label: "Ajouter un nouveau Patient", action: () => { setActiveTab("patients"); setShowSearchPalette(false); } },
-    { label: "Saisir une ordonnance clinique", action: () => { setActiveTab("consultation"); setShowSearchPalette(false); } },
-    { label: "Afficher les factures et caisse", action: () => { setActiveTab("billing"); setShowSearchPalette(false); } },
-    { label: "Ouvrir le Triage et Urgences", action: () => { setActiveTab("specialized"); setShowSearchPalette(false); } },
-    { label: "Clôturer la comptabilité / Caisse", action: () => { setActiveTab("billing"); setShowSearchPalette(false); } },
-  ];
+  // universal Ctrl+K queries filter (Recherche intelligente & Résultats filtrés par rôle)
+  const getCommandQueries = () => {
+    const list: Array<{ label: string; details?: string; action: () => void; category: string }> = [];
 
-  const filteredCommands = commandQueries.filter(c => 
-    c.label.toLowerCase().includes(paletteSearchQuery.toLowerCase())
+    // Base actions filtered by role permissions
+    if (isAuthorized("dashboard")) {
+      list.push({ label: "Ouvrir le Tableau de Bord Général", details: "Vue synthétique de l'établissement", action: () => { setActiveTab("dashboard"); setShowSearchPalette(false); }, category: "Navigation" });
+    }
+    if (isAuthorized("patients")) {
+      list.push({ label: "Ajouter un nouveau Patient", details: "Formulaire d'admission d'identité civile", action: () => { setActiveTab("patients"); setShowSearchPalette(false); }, category: "Actions" });
+    }
+    if (isAuthorized("consultation")) {
+      list.push({ label: "Rédiger une Ordonnance Clinique / Dossier DME", details: "Actes de diagnostic et fiches de soins", action: () => { setActiveTab("consultation"); setShowSearchPalette(false); }, category: "Actions" });
+    }
+    if (isAuthorized("billing")) {
+      list.push({ label: "Consulter la Facturation, Caisse & Recettes", details: "Suivi des paiements Orange/Wave", action: () => { setActiveTab("billing"); setShowSearchPalette(false); }, category: "Navigation" });
+    }
+    if (isAuthorized("mutuelles")) {
+      list.push({ label: "Consulter les Mutuelles & Tiers-Payant (CANAM)", details: "Suivi des conventions et créances mutuelles", action: () => { setActiveTab("mutuelles"); setShowSearchPalette(false); }, category: "Navigation" });
+    }
+    if (isAuthorized("specialized")) {
+      list.push({ label: "Ouvrir les Urgences, Triages & Courriers", details: "File d'attente prioritaire par couleur", action: () => { setActiveTab("specialized"); setShowSearchPalette(false); }, category: "Navigation" });
+      list.push({ label: "Consulter l'état de la pharmacie & Stocks", details: "Médicaments et seuils d'alerte", action: () => { setActiveTab("specialized"); setShowSearchPalette(false); }, category: "Navigation" });
+    }
+    if (isAuthorized("teleconsultation")) {
+      list.push({ label: "Lancer une Téléconsultation WebRTC", details: "Visio-assistance médicale d'épreuve", action: () => { setActiveTab("teleconsultation"); setShowSearchPalette(false); }, category: "Actions" });
+    }
+    if (isAuthorized("settings")) {
+      list.push({ label: "Audit, Journal de Sécurité & Habilitations RBAC", details: "Conformité loi 2013-015", action: () => { setActiveTab("settings"); setShowSearchPalette(false); }, category: "Système" });
+    }
+
+    // Dynamic search suggestions for medical files/patients if input matches
+    if (isAuthorized("patients") && paletteSearchQuery.length > 1) {
+      patients.forEach(pat => {
+        if (pat.nom.toLowerCase().includes(paletteSearchQuery.toLowerCase()) || pat.prenom.toLowerCase().includes(paletteSearchQuery.toLowerCase()) || pat.id.toLowerCase().includes(paletteSearchQuery.toLowerCase())) {
+          list.push({
+            label: `Patient : ${pat.nom.toUpperCase()} ${pat.prenom}`,
+            details: `Identifiant: ${pat.id} | Mutuelle: ${pat.assurance || "Aucune"}`,
+            action: () => {
+              setActiveTab("patients");
+              setShowSearchPalette(false);
+            },
+            category: "Suggestions rapides"
+          });
+        }
+      });
+    }
+
+    // Dynamic search suggestions for invoices (including insurance codes CANAM, etc)
+    if (isAuthorized("billing") && paletteSearchQuery.length > 1) {
+      invoices.forEach(inv => {
+        if (inv.id.toLowerCase().includes(paletteSearchQuery.toLowerCase()) || inv.patientNom.toLowerCase().includes(paletteSearchQuery.toLowerCase())) {
+          list.push({
+            label: `Facture ${inv.id} - ${inv.patientNom}`,
+            details: `Montant: ${inv.montantTotal} FCFA | Statut: ${inv.statut}`,
+            action: () => {
+              setActiveTab("billing");
+              setShowSearchPalette(false);
+            },
+            category: "Suggestions rapides"
+          });
+        }
+      });
+    }
+
+    return list;
+  };
+
+  const filteredCommands = getCommandQueries().filter(c => 
+    c.label.toLowerCase().includes(paletteSearchQuery.toLowerCase()) ||
+    (c.details && c.details.toLowerCase().includes(paletteSearchQuery.toLowerCase()))
   );
 
   return (
@@ -579,20 +848,28 @@ export default function App() {
               <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded font-bold font-mono">ESC</span>
             </div>
             
-            <div className="p-2 space-y-1 max-h-[250px] overflow-y-auto">
-              {filteredCommands.map((cmd, idx) => (
+            <div className="p-2 space-y-1 max-h-[280px] overflow-y-auto">
+              {filteredCommands.map((cmd: any, idx) => (
                 <button
                   key={idx}
                   onClick={cmd.action}
-                  className="w-full text-left text-xs p-2.5 hover:bg-slate-50 rounded-lg font-semibold text-slate-700 flex items-center justify-between cursor-pointer transition-all"
+                  className="w-full text-left text-xs p-2.5 hover:bg-slate-50/80 rounded-lg font-semibold text-slate-700 flex items-center justify-between cursor-pointer transition-all border border-transparent hover:border-slate-100"
                 >
-                  <span>{cmd.label}</span>
-                  <span className="text-[10px] text-slate-350">Accéder</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[8px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider font-mono">
+                        {cmd.category}
+                      </span>
+                      <span className="text-slate-900 font-bold">{cmd.label}</span>
+                    </div>
+                    {cmd.details && <span className="text-[10px] text-slate-400 font-medium pl-1">{cmd.details}</span>}
+                  </div>
+                  <span className="text-[10px] text-sky-600 font-bold shrink-0">Accéder →</span>
                 </button>
               ))}
 
               {filteredCommands.length === 0 && (
-                <p className="p-4 text-center text-slate-400 text-xs italic">Aucune action trouvée.</p>
+                <p className="p-4 text-center text-slate-400 text-xs italic">Aucun résultat correspondant aux critères de recherche.</p>
               )}
             </div>
           </div>
@@ -667,17 +944,55 @@ export default function App() {
             </div>
             
             <select
-              className="text-[10px] rounded-lg border border-slate-300 p-1.5 font-bold text-slate-800 bg-white"
-              value={activeRole}
-              onChange={(e) => handleRoleChange(e.target.value as UserRole)}
+              className="text-[10px] rounded-lg border border-slate-300 p-1.5 font-bold text-slate-800 bg-white outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+              value={getCurrentUserAccount()?.id || ""}
+              onChange={(e) => {
+                const userId = e.target.value;
+                const activeList = users.length > 0 ? users : HOSPITAL_STAFF_ACCOUNTS;
+                const matched = activeList.find(acc => acc.id === userId);
+                if (matched) {
+                  if (!matched.isActive) {
+                    alert(`ACCÈS REFUSÉ : Le compte de ${matched.name} (${matched.role}) est VERROUILLÉ suite aux politiques de gouvernance rigoureuse.`);
+                    return;
+                  }
+                  setActiveRole(matched.role);
+                  setActiveUser(matched.name);
+                  logSystemAction("Changement de session", `Session ouverte sous le profil ${matched.role} (${matched.name})`);
+                  
+                  // Auto redirect if current tab is not authorized
+                  const targetAuth = (tab: string) => {
+                    if (!matched.isActive) return false;
+                    if (matched.role === "Administrateur Système" && tab === "settings") return true;
+                    if (matched.role !== "Administrateur Système" && tab === "settings") return false;
+                    if (matched.allowedModules && matched.allowedModules.length > 0) {
+                      return matched.allowedModules.includes(tab);
+                    }
+                    const defaultModules: Record<UserRole, string[]> = {
+                      "Administrateur Système": ["dashboard", "patients", "specialized", "agenda", "hospitalisation", "rh-paie", "courrier"],
+                      "Médecin": ["dashboard", "patients", "consultation", "specialized", "agenda", "hospitalisation", "teleconsultation", "rapports"],
+                      "Infirmier": ["dashboard", "patients", "agenda", "hospitalisation", "specialized", "courrier"],
+                      "Sage-femme": ["dashboard", "patients", "consultation", "agenda", "hospitalisation", "teleconsultation"],
+                      "Aide-soignant": ["dashboard", "patients", "hospitalisation", "agenda"],
+                      "Laborantin": ["dashboard", "specialized"],
+                      "Radiologue": ["dashboard", "specialized"],
+                      "Pharmacien": ["dashboard", "specialized"],
+                      "Réceptionniste": ["dashboard", "patients", "agenda", "courrier"],
+                      "Caissier": ["dashboard", "billing", "mutuelles", "rapports"],
+                      "DG": ["dashboard", "rapports", "patients", "agenda", "billing", "hospitalisation", "courrier", "mutuelles"]
+                    };
+                    return (defaultModules[matched.role] || []).includes(tab);
+                  };
+                  if (!targetAuth(activeTab)) {
+                    setActiveTab("dashboard");
+                  }
+                }
+              }}
             >
-              <option value="Administrateur Système">SysAdmin (Sidi)</option>
-              <option value="Médecin">Médecin (Dr. Sangaré)</option>
-              <option value="Caissier">Caissier (Cms. Maïga)</option>
-              <option value="Laborantin">Laborantin (Tangara)</option>
-              <option value="Réceptionniste">Réceptionniste (Ouattara)</option>
-              <option value="Sage-femme">Sage-femme (Fanta)</option>
-              <option value="DG">Directeur (Dr. Traoré)</option>
+              {(users.length > 0 ? users : HOSPITAL_STAFF_ACCOUNTS).map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.role} - {acc.name} {!acc.isActive ? " [🔒 Bloqué]" : ""}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -685,110 +1000,199 @@ export default function App() {
 
       {/* Main Structural Body View (Side Nav + Content Panels) */}
       <div className="flex-1 flex flex-col md:flex-row">
-        
         {/* Navigation panel */}
         <aside className="w-full md:w-60 bg-white border-r border-slate-200 p-4 space-y-6 flex-shrink-0">
           <div className="space-y-1.5">
             <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide px-3 select-none">Navigation de Service</span>
 
             <div className="space-y-0.5 font-medium text-xs">
-              <button
-                onClick={() => setActiveTab("dashboard")}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center gap-2.5 cursor-pointer ${
-                  activeTab === "dashboard" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
-                }`}
-              >
-                <Activity className="h-4 w-4 text-sky-500" />
-                <span>Tableau Général</span>
-              </button>
+              {isAuthorized("dashboard") && (
+                <button
+                  onClick={() => setActiveTab("dashboard")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center gap-2.5 cursor-pointer ${
+                    activeTab === "dashboard" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <Activity className="h-4 w-4 text-sky-500" />
+                  <span>Tableau Général</span>
+                </button>
+              )}
 
-              <button
-                onClick={() => {
-                  if (isAuthorized("patients")) setActiveTab("patients");
-                  else alert("Accès refusé: Droits d'admission requis.");
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
-                  activeTab === "patients" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Users className="h-4 w-4 text-sky-500" />
-                  <span>Registre Patients</span>
-                </div>
-                {!isAuthorized("patients") && <Lock className="h-3 w-3 text-slate-350" />}
-              </button>
+              {isAuthorized("patients") && (
+                <button
+                  onClick={() => setActiveTab("patients")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "patients" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Users className="h-4 w-4 text-sky-500" />
+                    <span>Registre Patients</span>
+                  </div>
+                </button>
+              )}
 
-              <button
-                onClick={() => {
-                  if (isAuthorized("consultation")) setActiveTab("consultation");
-                  else alert("Accès refusé: Droits médicaux exclusifs (DME).");
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
-                  activeTab === "consultation" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Stethoscope className="h-4 w-4 text-sky-500" />
-                  <span>Consultation DME IA</span>
-                </div>
-                {!isAuthorized("consultation") && <Lock className="h-3 w-3 text-slate-350" />}
-              </button>
+              {isAuthorized("consultation") && (
+                <button
+                  onClick={() => setActiveTab("consultation")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "consultation" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Stethoscope className="h-4 w-4 text-sky-500" />
+                    <span>Consultation DME IA</span>
+                  </div>
+                </button>
+              )}
 
-              <button
-                onClick={() => {
-                  if (isAuthorized("billing")) setActiveTab("billing");
-                  else alert("Accès refusé: Réservé à la Caisse.");
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
-                  activeTab === "billing" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <CreditCard className="h-4 w-4 text-sky-500" />
-                  <span>Caisse & Facturation</span>
-                </div>
-                {!isAuthorized("billing") && <Lock className="h-3 w-3 text-slate-350" />}
-              </button>
+              {isAuthorized("billing") && (
+                <button
+                  onClick={() => setActiveTab("billing")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "billing" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <CreditCard className="h-4 w-4 text-sky-500" />
+                    <span>Caisse & Facturation</span>
+                  </div>
+                </button>
+              )}
 
-              <button
-                onClick={() => {
-                  if (isAuthorized("specialized")) setActiveTab("specialized");
-                  else alert("Accès refusé: Droits techniques requis.");
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
-                  activeTab === "specialized" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Layers className="h-4 w-4 text-sky-500" />
-                  <span>Spécialités (Lab, Pharm)</span>
-                </div>
-                {!isAuthorized("specialized") && <Lock className="h-3 w-3 text-slate-350" />}
-              </button>
+              {isAuthorized("specialized") && (
+                <button
+                  onClick={() => setActiveTab("specialized")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "specialized" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Layers className="h-4 w-4 text-sky-500" />
+                    <span>Spécialités (Lab, Pharm)</span>
+                  </div>
+                </button>
+              )}
+
+              {isAuthorized("agenda") && (
+                <button
+                  onClick={() => setActiveTab("agenda")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "agenda" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Calendar className="h-4 w-4 text-sky-500" />
+                    <span>Agenda & Rendez-vous</span>
+                  </div>
+                </button>
+              )}
+
+              {isAuthorized("hospitalisation") && (
+                <button
+                  onClick={() => setActiveTab("hospitalisation")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "hospitalisation" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Bed className="h-4 w-4 text-sky-500" />
+                    <span>Hospitalisation & Lits</span>
+                  </div>
+                </button>
+              )}
+
+              {isAuthorized("rh-paie") && (
+                <button
+                  onClick={() => setActiveTab("rh-paie")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "rh-paie" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <UserCheck className="h-4 w-4 text-sky-500" />
+                    <span>RH, Présences & Paie</span>
+                  </div>
+                </button>
+              )}
+
+              {isAuthorized("courrier") && (
+                <button
+                  onClick={() => setActiveTab("courrier")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "courrier" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Mail className="h-4 w-4 text-sky-500" />
+                    <span>Registre Courriers</span>
+                  </div>
+                </button>
+              )}
+
+              {isAuthorized("teleconsultation") && (
+                <button
+                  onClick={() => setActiveTab("teleconsultation")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "teleconsultation" ? "bg-slate-50 text-slate-905 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Video className="h-4 w-4 text-sky-500" />
+                    <span>Téléconsultation WebRTC</span>
+                  </div>
+                </button>
+              )}
+
+              {isAuthorized("rapports") && (
+                <button
+                  onClick={() => setActiveTab("rapports")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "rapports" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <TrendingUp className="h-4 w-4 text-sky-500" />
+                    <span>Rapports & SNIS</span>
+                  </div>
+                </button>
+              )}
+
+              {clinicBrand.activeModules.mutuelles && isAuthorized("mutuelles") && (
+                <button
+                  onClick={() => setActiveTab("mutuelles")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "mutuelles" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Shield className="h-4 w-4 text-sky-500" />
+                    <span>Mutuelles & Assurances</span>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="space-y-1.5 pt-4 border-t border-slate-100">
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide px-3 select-none">Aide & Administration</span>
+          {isAuthorized("settings") && (
+            <div className="space-y-1.5 pt-4 border-t border-slate-100">
+              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide px-3 select-none">Aide & Administration</span>
 
-            <div className="space-y-0.5 font-medium text-xs">
-              <button
-                onClick={() => {
-                  if (isAuthorized("settings")) setActiveTab("settings");
-                  else alert("Accès refusé: Section strictement réservée au Super-Administrateur.");
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
-                  activeTab === "settings" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Settings className="h-4 w-4 text-sky-500" />
-                  <span>Paramètres & Audits</span>
-                </div>
-                {!isAuthorized("settings") && <Lock className="h-3 w-3 text-slate-350" />}
-              </button>
+              <div className="space-y-0.5 font-medium text-xs">
+                <button
+                  onClick={() => setActiveTab("settings")}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between cursor-pointer ${
+                    activeTab === "settings" ? "bg-slate-50 text-slate-900 font-extrabold shadow-xs" : "text-slate-600 hover:bg-slate-50/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Settings className="h-4 w-4 text-sky-500" />
+                    <span>Paramètres & Audits</span>
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Quick legal disclaimer information block conforming with guidelines */}
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[10px] text-slate-400 leading-relaxed font-semibold">
@@ -857,6 +1261,71 @@ export default function App() {
             />
           )}
 
+          {activeTab === "agenda" && isAuthorized("agenda") && (
+            <AgendaView
+              appointments={appointments}
+              patients={patients}
+              onAddAppointment={handleAddAppointment}
+              onUpdateStatus={handleUpdateAppointmentStatus}
+              accentColor={clinicBrand.primaryColor}
+            />
+          )}
+
+          {activeTab === "hospitalisation" && isAuthorized("hospitalisation") && (
+            <HospitalisationView
+              beds={beds}
+              patients={patients}
+              onAdmitPatient={handleAdmitPatient}
+              onDischargePatient={handleDischargePatient}
+              onAddNurseLog={handleAddNurseLog}
+              onUpdateTemp={handleUpdateTempAndPulse}
+              accentColor={clinicBrand.primaryColor}
+            />
+          )}
+
+          {activeTab === "rh-paie" && isAuthorized("rh-paie") && (
+            <RhPaieView
+              presences={presences}
+              onClockIn={handleClockIn}
+              accentColor={clinicBrand.primaryColor}
+            />
+          )}
+
+          {activeTab === "courrier" && isAuthorized("courrier") && (
+            <CourrierView
+              mails={mails}
+              onAddMail={handleAddMail}
+              accentColor={clinicBrand.primaryColor}
+            />
+          )}
+
+          {activeTab === "teleconsultation" && isAuthorized("teleconsultation") && (
+            <TeleconsultationView
+              patients={patients}
+              onAddRecord={handleAddRecord}
+              accentColor={clinicBrand.primaryColor}
+            />
+          )}
+
+          {activeTab === "mutuelles" && isAuthorized("mutuelles") && (
+            <MutuellesView
+              patients={patients}
+              invoices={invoices}
+              accentColor={clinicBrand.primaryColor}
+            />
+          )}
+
+          {activeTab === "rapports" && isAuthorized("rapports") && (
+            <RapportsView
+              patients={patients}
+              beds={beds}
+              stocks={stocks}
+              invoices={invoices}
+              triages={triages}
+              accentColor={clinicBrand.primaryColor}
+            />
+          )}
+
           {activeTab === "settings" && isAuthorized("settings") && (
             <BrandingSettings
               initialBranding={clinicBrand}
@@ -864,6 +1333,12 @@ export default function App() {
               onSaveBranding={handleSaveBranding}
               onRefreshLogs={fetchLogs}
               onPurgeDatabase={handlePurgeDatabase}
+              users={users}
+              onSaveUsers={(updated) => {
+                setUsers(updated);
+                saveToLocal("users", updated);
+                logSystemAction("Gouvernance RBAC", "Mise à jour de la table des habilitations et restrictions collaborateurs.");
+              }}
             />
           )}
         </main>

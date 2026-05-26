@@ -1,17 +1,25 @@
 import { useState, FormEvent } from "react";
-import { Patient } from "../types";
-import { PlusCircle, Search, User, Clipboard, Phone, Shield, ArrowRight, CheckCircle2, Camera, QrCode, Printer, Archive, RotateCcw } from "lucide-react";
+import QRCode from "qrcode";
+import { Patient, UserRole } from "../types";
+import { PlusCircle, Search, User, Clipboard, Phone, Shield, ArrowRight, CheckCircle2, Camera, QrCode, Printer, Archive, RotateCcw, Heart } from "lucide-react";
+
+const ETHNIES = [
+  "Bambara", "Peulh", "Soninké", "Malinké", "Sonrhaï", "Dogon", "Minianka", "Sénoufo", "Bozo", "Touareg", "Bobo (Bwa)", "Kassonké", "Maure", "Arabe", "Somono", "Jakhanké", "Samogho"
+];
 
 interface PatientsViewProps {
   patients: Patient[];
-  onAddPatient: (newPatient: Omit<Patient, "id" | "createdAt" | "isArchived"> & { contactUrgenceNom?: string; contactUrgenceTel?: string; photoUrl?: string }) => void;
+  onAddPatient: (newPatient: Omit<Patient, "id" | "createdAt">) => void;
   accentColor: string;
+  activeRole?: UserRole;
 }
 
-export default function PatientsView({ patients, onAddPatient, accentColor }: PatientsViewProps) {
+export default function PatientsView({ patients, onAddPatient, accentColor, activeRole }: PatientsViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"actifs" | "archives">("actifs");
+  const [activePreviewPatient, setActivePreviewPatient] = useState<Patient | null>(null);
+  const [previewQrUrl, setPreviewQrUrl] = useState<string>("");
 
   // Form states
   const [nom, setNom] = useState("");
@@ -24,6 +32,12 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
   const [groupeSanguin, setGroupeSanguin] = useState<Patient["groupeSanguin"]>("O+");
   const [allergies, setAllergies] = useState("");
   const [assurance, setAssurance] = useState("Aucune");
+
+  // New specifications Module 1
+  const [nationalite, setNationalite] = useState("Malienne");
+  const [lieuNaissance, setLieuNaissance] = useState("");
+  const [ethnie, setEthnie] = useState("Bambara");
+  const [antecedents, setAntecedents] = useState("");
 
   // Emergency contact & Webcam Simulation additions
   const [contactUrgenceNom, setContactUrgenceNom] = useState("");
@@ -78,7 +92,11 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
       assurance,
       contactUrgenceNom,
       contactUrgenceTel,
-      photoUrl
+      photoUrl,
+      nationalite,
+      lieuNaissance,
+      ethnie,
+      antecedents
     });
 
     // Reset Form
@@ -95,6 +113,10 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
     setContactUrgenceNom("");
     setContactUrgenceTel("");
     setPhotoUrl(undefined);
+    setNationalite("Malienne");
+    setLieuNaissance("");
+    setEthnie("Bambara");
+    setAntecedents("");
 
     setMessage("Dossier patient initialisé et enregistré avec succès.");
     setTimeout(() => {
@@ -118,60 +140,81 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
       p.telephone.includes(searchTerm)
   );
 
-  const handlePrintCard = (patient: Patient) => {
-    const cardWindow = window.open("", "_blank");
-    if (!cardWindow) return;
+  const handlePrintCard = async (patient: Patient) => {
+    try {
+      const qrText = `MEDISHAHEL-ID:${patient.id}\nNOM:${patient.nom.toUpperCase()}\nPRENOM:${patient.prenom}\nSANG:${patient.groupeSanguin}\nURG:${patient.contactUrgenceTel || "N/A"}`;
+      const qrDataUrl = await QRCode.toDataURL(qrText, { margin: 1, width: 100 });
 
-    const html = `
-      <html>
-        <head>
-          <title>Carte Patient Unique- ${patient.nom}</title>
-          <style>
-            body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background: #f0f2f5; }
-            .badge-box { width: 350px; height: 220px; background: white; border-radius: 12px; border: 1.5px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 15px; position: relative; box-sizing: border-box; }
-            .header { border-bottom: 1.5px solid #0284c7; padding-bottom: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-            .header h3 { margin: 0; font-size: 14px; color: #0284c7; }
-            .header span { font-size: 9px; color: #94a3b8; font-family: monospace; }
-            .details { display: flex; gap: 10px; }
-            .avatar { width: 64px; height: 64px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f1f5f9; display: flex; justify-content: center; align-items: center; font-size: 24px; color: #94a3b8; font-weight: bold; overflow: hidden; }
-            .avatar img { width: 100%; height: 100%; object-fit: cover; }
-            .fields { flex-1: 1; font-size: 10.5px; line-height: 1.5; color: #334155; }
-            .bold { font-weight: bold; color: #1e293b; }
-            .qr-placeholder { position: absolute; bottom: 12px; right: 12px; width: 65px; height: 65px; border: 1.5px solid #0284c7; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 7px; color: #0284c7; font-weight: bold; text-align: center; background: #f0f9ff; }
-            .emergency { font-size: 9px; color: red; margin-top: 5px; font-weight: bold; }
-          </style>
-        </head>
-        <body onload="window.print()">
-          <div class="badge-box">
-            <div class="header">
-              <h3>MÉDISHAHEL CLINIQUE - MALI</h3>
-              <span>N° Dossier: ${patient.id}</span>
-            </div>
-            <div class="details">
-              <div class="avatar">
-                ${patient.photoUrl ? `<img src="${patient.photoUrl}" />` : patient.nom.charAt(0) + patient.prenom.charAt(0)}
+      const cardWindow = window.open("", "_blank");
+      if (!cardWindow) {
+        alert("Action impossible : Les fenêtres contextuelles (popups) sont bloquées par votre navigateur. Veuillez autoriser les popups ou utiliser l'Aperçu Direct.");
+        return;
+      }
+
+      const html = `
+        <html>
+          <head>
+            <title>Carte Patient Unique- ${patient.nom}</title>
+            <style>
+              body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background: #ffffff; }
+              .badge-box { width: 350px; height: 220px; background: white; border-radius: 12px; border: 1.5px solid #cbd5e1; padding: 15px; position: relative; box-sizing: border-box; }
+              .header { border-bottom: 2px solid ${accentColor}; padding-bottom: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+              .header h3 { margin: 0; font-size: 13px; color: ${accentColor}; font-weight: 800; }
+              .header span { font-size: 9px; color: #64748b; font-family: monospace; }
+              .details { display: flex; gap: 10px; }
+              .avatar { width: 62px; height: 62px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f1f5f9; display: flex; justify-content: center; align-items: center; font-size: 20px; color: #475569; font-weight: bold; overflow: hidden; }
+              .avatar img { width: 100%; height: 100%; object-fit: cover; }
+              .fields { flex: 1; font-size: 10px; line-height: 1.4; color: #334155; }
+              .bold { font-weight: 700; color: #0f172a; }
+              .qr-placeholder { position: absolute; bottom: 12px; right: 12px; width: 65px; height: 65px; border: 1px solid #cbd5e1; display: flex; justify-content: center; align-items: center; background: white; }
+              .qr-placeholder img { width: 100%; height: 100%; }
+              .emergency { font-size: 8.5px; color: red; margin-top: 4px; font-weight: bold; }
+            </style>
+          </head>
+          <body onload="window.print(); window.close();">
+            <div class="badge-box">
+              <div class="header">
+                <h3>MÉDISHAHEL CLINIQUE - MALI</h3>
+                <span>N° Dossier: ${patient.id}</span>
               </div>
-              <div class="fields">
-                <span class="bold">Nom:</span> ${patient.nom.toUpperCase()}<br/>
-                <span class="bold">Prénom:</span> ${patient.prenom}<br/>
-                <span class="bold">Né(e) le:</span> ${patient.dateNaissance} (${patient.sexe})<br/>
-                <span class="bold">Groupe Sanguin:</span> <span style="color:red; font-weight:bold;">${patient.groupeSanguin}</span><br/>
-                <span class="bold">Allergies:</span> <span style="font-weight:bold;">${patient.allergies || "Aucune"}</span><br/>
-                <div class="emergency">
-                  URGENCE: ${patient.contactUrgenceNom || "Non défini"} (${patient.contactUrgenceTel || "-"})
+              <div class="details">
+                <div class="avatar">
+                  ${patient.photoUrl ? `<img src="${patient.photoUrl}" />` : patient.nom.charAt(0) + patient.prenom.charAt(0)}
+                </div>
+                <div class="fields">
+                  <span class="bold">Nom:</span> ${patient.nom.toUpperCase()} ${patient.prenom}<br/>
+                  <span class="bold">Né(e) le:</span> ${patient.dateNaissance} (${patient.sexe}) à ${patient.lieuNaissance || "S/D"}<br/>
+                  <span class="bold">Nationalité:</span> ${patient.nationalite || "Malienne"} • <span class="bold">Ethnie:</span> ${patient.ethnie || "Bambara"}<br/>
+                  <span class="bold">Groupe Sanguin:</span> <span style="color:red; font-weight:bold;">${patient.groupeSanguin}</span><br/>
+                  <span class="bold">Allergies:</span> <span style="font-weight:bold;">${patient.allergies || "Aucune"}</span><br/>
+                  <div class="emergency">
+                    URGENCE: ${patient.contactUrgenceNom || "Non défini"} (${patient.contactUrgenceTel || "-"})
+                  </div>
                 </div>
               </div>
+              <div class="qr-placeholder">
+                <img src="${qrDataUrl}" alt="QR" />
+              </div>
             </div>
-            <div class="qr-placeholder">
-              [QR CODE]<br/>
-              SECURE
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-    cardWindow.document.write(html);
-    cardWindow.document.close();
+          </body>
+        </html>
+      `;
+      cardWindow.document.write(html);
+      cardWindow.document.close();
+    } catch (err) {
+      console.error("Error during card printing: ", err);
+    }
+  };
+
+  const handleShowCardPreview = async (patient: Patient) => {
+    try {
+      const qrText = `MEDISHAHEL-ID:${patient.id}\nNOM:${patient.nom.toUpperCase()}\nPRENOM:${patient.prenom}\nSANG:${patient.groupeSanguin}\nURG:${patient.contactUrgenceTel || "N/A"}`;
+      const qrDataUrl = await QRCode.toDataURL(qrText, { margin: 1, width: 120 });
+      setPreviewQrUrl(qrDataUrl);
+      setActivePreviewPatient(patient);
+    } catch (err) {
+      console.error("Error during barcode generation: ", err);
+    }
   };
 
   return (
@@ -184,16 +227,18 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
           <p className="text-[11px] text-slate-400 font-medium">Admission, gestion administrative, contacts de sécurité et archivage légal.</p>
         </div>
         
-        <div className="flex gap-2 self-start sm:self-center">
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="text-white text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-1.5 cursor-pointer transition-all hover:opacity-95"
-            style={{ backgroundColor: accentColor }}
-          >
-            <PlusCircle className="h-4 w-4" />
-            <span>{showAddForm ? "Retour au registre" : "Nouveau Dossier Patient"}</span>
-          </button>
-        </div>
+        {activeRole !== "Aide-soignant" && (
+          <div className="flex gap-2 self-start sm:self-center">
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="text-white text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-1.5 cursor-pointer transition-all hover:opacity-95"
+              style={{ backgroundColor: accentColor }}
+            >
+              <PlusCircle className="h-4 w-4" />
+              <span>{showAddForm ? "Retour au registre" : "Nouveau Dossier Patient"}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {!showAddForm && (
@@ -386,6 +431,54 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
                 <option value="Sogavie (90%)">Sogavie Compagnie (90%)</option>
               </select>
             </div>
+
+            {/* Advanced Specification fields under Module 1 */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Nationalité</label>
+              <input
+                type="text"
+                placeholder="Ex: Malienne"
+                className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-sky-500"
+                value={nationalite}
+                onChange={(e) => setNationalite(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Lieu de Naissance</label>
+              <input
+                type="text"
+                placeholder="Ex: Bamako, Kayes"
+                className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-sky-500"
+                value={lieuNaissance}
+                onChange={(e) => setLieuNaissance(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Origine Ethnie</label>
+              <select
+                className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none font-semibold text-slate-800 bg-white"
+                value={ethnie}
+                onChange={(e) => setEthnie(e.target.value)}
+              >
+                {ETHNIES.map((eth) => (
+                  <option key={eth} value={eth}>
+                    {eth}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Antécédents médicaux majeurs (Pathologies, Chirurgies, Traitements permanents)</label>
+              <textarea
+                placeholder="Saisissez ici l'historique de santé du patient, ses antécédents familiaux ou cliniques notables..."
+                className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none h-16 resize-none focus:border-sky-500"
+                value={antecedents}
+                onChange={(e) => setAntecedents(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex justify-end gap-2 text-xs">
@@ -448,14 +541,11 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
                         <div>
                           <h4 className="font-bold text-xs text-slate-800">{p.nom.toUpperCase()} {p.prenom}</h4>
                           <span className="text-[10px] font-mono text-slate-400 font-semibold">{p.id}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end">
+                       <div className="flex flex-col items-end">
                         <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-extrabold ${p.sexe === "F" ? "bg-rose-50 text-rose-750" : "bg-sky-50 text-sky-750"}`}>
                           Sexe: {p.sexe}
                         </span>
-                        <span className="text-[8px] text-slate-400 mt-1">Agréé {p.groupeSanguin}</span>
+                        <span className="text-[8px] text-slate-400 mt-1">Agréé {activeRole === "Réceptionniste" ? "🔒 [Masqué]" : p.groupeSanguin}</span>
                       </div>
                     </div>
 
@@ -469,6 +559,18 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
                         <User className="h-3.5 w-3.5 text-slate-400" />
                         <span className="truncate">{p.profession || "Non renseignée"}</span>
                       </div>
+
+                      {/* New specification fields Module 1 */}
+                      <div className="col-span-2 text-[10.5px] bg-slate-50/70 p-1.5 px-2 rounded-lg border border-slate-100 space-y-1">
+                        <div>
+                          <span className="text-slate-400">Origine:</span> <span className="font-bold text-slate-700">{p.nationalite || "Malienne"}</span>
+                          {p.lieuNaissance && <> • <span className="text-slate-400">Né(e) à:</span> <span className="font-bold text-slate-700">{p.lieuNaissance}</span></>}
+                        </div>
+                        <div>
+                          <span className="text-slate-400">Ethnie:</span> <span className="font-extrabold text-[#0284c7] bg-sky-50 px-1.5 py-0.5 border border-sky-100 rounded text-[10px]">{p.ethnie || "Bambara"}</span>
+                        </div>
+                      </div>
+
                       <div className="flex items-center gap-1.5 col-span-2">
                         <Clipboard className="h-3.5 w-3.5 text-slate-400" />
                         <span className="truncate">{p.adresse || "Bamako"}</span>
@@ -482,8 +584,24 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
                       )}
                     </div>
 
+                    {/* Antecedents displaying if present */}
+                    {p.antecedents && (
+                      <div className="bg-amber-50/40 text-amber-900 p-2 rounded text-[10px] font-medium border border-amber-200/50 flex gap-1.5 leading-normal">
+                        <Heart className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                        <div>
+                          <strong className="block text-[10px] text-amber-800 font-extrabold">Antécédents médicaux :</strong>
+                          <span className="text-slate-600 font-semibold">{activeRole === "Réceptionniste" ? "🔒 [Donnée médicale confidentielle masquée]" : p.antecedents}</span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Red alert allergen warning warnings if applicable */}
-                    {p.allergies ? (
+                    {activeRole === "Réceptionniste" ? (
+                      <div className="bg-amber-50 text-amber-900 p-2 rounded text-[10px] font-medium flex items-center gap-1.5 border border-amber-100">
+                        <Shield className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                        <span className="truncate font-bold">🔒 Données sensibilités médicales confidentielles masquées</span>
+                      </div>
+                    ) : p.allergies ? (
                       <div className="bg-red-50 text-red-800 p-2 rounded text-[10px] font-medium flex items-center gap-1.5 border border-red-100">
                         <Shield className="h-3.5 w-3.5 text-red-500 shrink-0" />
                         <span className="truncate font-bold">Allergies: {p.allergies}</span>
@@ -499,15 +617,16 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
                   {/* Actions patient card generation and archiving */}
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
                     <button
-                      onClick={() => handlePrintCard(p)}
-                      className="text-[#0284c7] hover:underline flex items-center gap-1"
+                      onClick={() => handleShowCardPreview(p)}
+                      className="text-[#0284c7] hover:underline flex items-center gap-1 cursor-pointer"
+                      style={{ color: accentColor }}
                     >
-                      <QrCode className="h-4 w-4" /> Carte Patient Badges
+                      <QrCode className="h-4 w-4 text-sky-600" style={{ color: accentColor }} /> Carte Patient Badges
                     </button>
 
                     <button
                       onClick={() => handleToggleArchive(p.id)}
-                      className="text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                      className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer"
                     >
                       {hasArc ? <RotateCcw className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
                       <span>{hasArc ? "Désarchiver" : "Archiver"}</span>
@@ -522,6 +641,86 @@ export default function PatientsView({ patients, onAddPatient, accentColor }: Pa
                 Aucun patient trouvé correspondant à votre recherche.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Patient Unique ID Card & QR Code Preview Modal */}
+      {activePreviewPatient && (
+        <div className="fixed inset-0 bg-slate-905/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 relative space-y-4">
+            <div className="flex items-center justify-between border-b pb-2.5">
+              <h3 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
+                <QrCode className="h-4 w-4 text-sky-600 animate-pulse" style={{ color: accentColor }} /> Carte d'Identification & QR Code
+              </h3>
+              <button
+                onClick={() => setActivePreviewPatient(null)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold bg-slate-100 hover:bg-slate-200 p-1 px-2 rounded-lg transition-all cursor-pointer"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Standard compliant physical card box mockup */}
+            <div className="mx-auto border border-slate-300 bg-white rounded-xl p-3.5 shadow-sm relative select-none w-[320px] h-[195px] overflow-hidden">
+              <div className="border-b-2 pb-1.5 mb-2 flex items-center justify-between" style={{ borderColor: accentColor }}>
+                <h4 className="font-black text-[10px] uppercase tracking-wider" style={{ color: accentColor }}>MÉDISHAHEL CLINIQUE - MALI</h4>
+                <span className="text-[8px] font-bold text-slate-400 font-mono">Dossier: {activePreviewPatient.id}</span>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="h-14 w-14 bg-slate-10 border border-slate-200 rounded-md flex items-center justify-center font-black text-slate-400 text-base overflow-hidden shrink-0">
+                  {activePreviewPatient.photoUrl ? (
+                    <img src={activePreviewPatient.photoUrl} alt="Avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    activePreviewPatient.nom.charAt(0) + activePreviewPatient.prenom.charAt(0)
+                  )}
+                </div>
+
+                <div className="text-[9px] leading-tight text-slate-700 flex-1 space-y-0.5">
+                  <div><span className="font-bold text-slate-900 font-mono">NOM:</span> {activePreviewPatient.nom.toUpperCase()} {activePreviewPatient.prenom}</div>
+                  <div><span className="font-bold text-slate-900 font-mono">NÉ(E):</span> {activePreviewPatient.dateNaissance} ({activePreviewPatient.sexe})</div>
+                  <div><span className="font-bold text-slate-905">NAT:</span> {activePreviewPatient.nationalite || "Malienne"} • {activePreviewPatient.ethnie || "Bambara"}</div>
+                  <div><span className="font-bold text-slate-900 font-mono">SANG:</span> <span className="text-red-600 font-bold">{activePreviewPatient.groupeSanguin}</span></div>
+                  <div><span className="font-bold text-slate-900 font-mono">ALLERGIES:</span> <span className="font-semibold text-rose-700">{activePreviewPatient.allergies || "Aucune"}</span></div>
+                  {activePreviewPatient.contactUrgenceTel && (
+                    <div className="text-[7.5px] text-red-650 font-bold bg-rose-50 p-0.5 px-1 rounded inline-block mt-0.5 leading-none">
+                      SOS: {activePreviewPatient.contactUrgenceNom || "Parent"} • {activePreviewPatient.contactUrgenceTel}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Encoded Offline QR Code placement */}
+              <div className="absolute bottom-2.5 right-2.5 h-[58px] w-[58px] border border-slate-200 rounded bg-white p-0.5 flex items-center justify-center">
+                {previewQrUrl ? (
+                  <img src={previewQrUrl} alt="QR Code" className="h-full w-full select-none" />
+                ) : (
+                  <span className="text-[6px] text-slate-400 font-mono scale-90">Génération...</span>
+                )}
+              </div>
+            </div>
+
+            <p className="text-[9.5px] text-slate-400 text-center leading-relaxed">
+              La puce QR Code chiffrée stocke les données d'identité clinique de secours pour une synchronisation simplifiée en cas de coupure réseau (Offline 48H).
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handlePrintCard(activePreviewPatient)}
+                className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                style={{ backgroundColor: accentColor }}
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span>Lancer l'impression</span>
+              </button>
+              <button
+                onClick={() => setActivePreviewPatient(null)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 font-bold text-xs py-2 px-3.5 rounded-xl transition-all cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}

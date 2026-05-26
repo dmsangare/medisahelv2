@@ -9,7 +9,7 @@ generator client {
 
 // 1. Patient Directory
 model Patient {
-  id                 String               @id @default(dbgenerated())
+  id                 String               @id
   nom                String
   prenom             String
   sexe               String

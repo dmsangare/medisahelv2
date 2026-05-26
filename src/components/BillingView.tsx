@@ -358,29 +358,106 @@ export default function BillingView({
                       <td className="px-5 py-3 text-right font-mono font-bold text-slate-900">{inv.montantPatiente.toLocaleString("fr-FR")} F</td>
                       <td className="px-5 py-3 text-center whitespace-nowrap">
                         {isPaid ? (
-                          <div className="text-emerald-700 font-extrabold font-mono text-[10px] flex items-center justify-center gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> {inv.modePaiement}
+                          <div className="flex flex-col items-center gap-1.5 justify-center">
+                            <span className="text-emerald-700 font-black font-mono text-[10.5px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> {inv.modePaiement}
+                            </span>
+                            <button
+                              onClick={() => {
+                                const pWind = window.open("", "_blank");
+                                if (!pWind) return;
+                                pWind.document.write(`
+                                  <html>
+                                    <head>
+                                      <title>REÇU CLOTURE DE TRANSACTION - #${inv.id}</title>
+                                      <style>
+                                        body { font-family: 'Courier New', Courier, monospace; padding: 30px; color: #0a0a0a; max-width: 440px; margin: auto; border: 2px dashed #0a0a0a; line-height: 1.4; }
+                                        .center { text-align: center; }
+                                        .bold { font-weight: bold; }
+                                        .uppercase { text-transform: uppercase; }
+                                        .line { border-bottom: 1px dashed #000; margin: 15px 0; }
+                                        .flex-row { display: flex; justify-content: space-between; }
+                                        .logo { font-size: 20px; font-weight: 900; letter-spacing: 1px; }
+                                        .badge { border: 1px solid #000; padding: 2px 6px; display: inline-block; font-size: 11px; font-weight: bold; }
+                                      </style>
+                                    </head>
+                                    <body onload="window.print()">
+                                      <div class="center logo">CLINIQUE MÉDISAHEL</div>
+                                      <div class="center bold">PROXIMITÉ & EXCELLENCE SÉCURISÉE</div>
+                                      <div class="center">BAMAKO QUARTIER DE FLEUVE, MALI</div>
+                                      <div class="center">Tél: +223 20 22 45 45 / 44 24 24 00</div>
+                                      <div class="line"></div>
+                                      <div class="center bold uppercase">🧾 REÇU DE PAIEMENT ACQUITTÉ</div>
+                                      <div class="center font-mono">ID Reçu: ${inv.id}</div>
+                                      <div class="line"></div>
+                                      <div class="flex-row"><span>Date:</span> <span class="bold">${new Date().toISOString().replace("T", " ").slice(0, 16)} GMT</span></div>
+                                      <div class="flex-row"><span>Dossier Cible:</span> <span class="bold font-mono">${inv.patientId}</span></div>
+                                      <div class="flex-row"><span>Patient(e):</span> <span class="bold uppercase">${inv.patientNom}</span></div>
+                                      <div class="line"></div>
+                                      <div class="bold italic">Prestations médicales:</div>
+                                      <div class="flex-row"><span>• ${inv.designation}</span> <span class="bold font-mono">${inv.montantTotal.toLocaleString("fr-FR")} FCFA</span></div>
+                                      <div class="line"></div>
+                                      <div class="flex-row"><span>Frais Total d'Actes:</span> <span class="font-mono">${inv.montantTotal.toLocaleString("fr-FR")} FCFA</span></div>
+                                      <div class="flex-row text-sky-800"><span>AMO Prise en Charge (70%):</span> <span class="font-mono">-${inv.montantAssurance.toLocaleString("fr-FR")} FCFA</span></div>
+                                      <div class="flex-row font-bold text-[13px]"><span>Montant Ticket Modérateur:</span> <span class="font-mono">${inv.montantPatiente.toLocaleString("fr-FR")} FCFA</span></div>
+                                      <div class="line"></div>
+                                      <div class="flex-row"><span>Mode de règlement:</span> <span class="bold uppercase">${inv.modePaiement}</span></div>
+                                      <div class="flex-row"><span>Prélèvements Taxes (CNSS):</span> <span>0.00 FCFA</span></div>
+                                      <div class="center" style="margin-top: 20px;">
+                                        <span class="badge">TRANSACTION APPROUVÉE ET ARCHIVÉE</span>
+                                      </div>
+                                      <div class="line"></div>
+                                      <p class="center italic font-bold" style="font-size: 11px;">MédiSahel Bamako vous souhaite une excellente santé.</p>
+                                    </body>
+                                  </html>
+                                `);
+                                pWind.document.close();
+                              }}
+                              className="text-[9.5px] px-2 py-0.5 bg-slate-55 hover:bg-slate-100 border border-slate-205 text-slate-800 rounded font-bold cursor-pointer flex items-center gap-1 transition-all"
+                            >
+                              <Printer className="h-3 w-3 text-slate-500" /> Reçu de Caisse
+                            </button>
                           </div>
                         ) : (
-                          <div className="flex gap-1 justify-center">
-                            <button
-                              onClick={() => onPayInvoice(inv.id, "Orange Money")}
-                              className="px-2 py-0.5 bg-orange-50 border border-orange-200 text-orange-700 rounded text-[9.5px] font-bold cursor-pointer hover:bg-orange-100"
-                            >
-                              OM
-                            </button>
-                            <button
-                              onClick={() => onPayInvoice(inv.id, "Wave")}
-                              className="px-2 py-0.5 bg-cyan-50 border border-cyan-200 text-cyan-700 rounded text-[9.5px] font-bold cursor-pointer hover:bg-cyan-100"
-                            >
-                              Wave
-                            </button>
-                            <button
-                              onClick={() => onPayInvoice(inv.id, "Espèces")}
-                              className="px-2 py-0.5 bg-emerald-50 border border-emerald-250 text-emerald-805 rounded text-[9.5px] font-bold cursor-pointer hover:bg-emerald-100"
-                            >
-                              Cash
-                            </button>
+                          <div className="flex flex-col gap-1.5 justify-center items-center">
+                            <div className="flex gap-1 justify-center flex-wrap max-w-[150px]">
+                              <button
+                                onClick={() => onPayInvoice(inv.id, "Espèces")}
+                                className="px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded text-[9px] font-extrabold cursor-pointer hover:bg-emerald-100 uppercase"
+                                title="Règlement par Espèces"
+                              >
+                                Cash
+                              </button>
+                              <button
+                                onClick={() => onPayInvoice(inv.id, "Orange Money")}
+                                className="px-1.5 py-0.5 bg-orange-50 border border-orange-200 text-orange-700 rounded text-[9px] font-extrabold cursor-pointer hover:bg-orange-100 uppercase"
+                                title="Règlement par Orange Money"
+                              >
+                                OM
+                              </button>
+                              <button
+                                onClick={() => onPayInvoice(inv.id, "Wave")}
+                                className="px-1.5 py-0.5 bg-cyan-50 border border-cyan-200 text-cyan-700 rounded text-[9px] font-extrabold cursor-pointer hover:bg-cyan-100 uppercase"
+                                title="Règlement par Wave"
+                              >
+                                Wave
+                              </button>
+                              <button
+                                onClick={() => onPayInvoice(inv.id, "Moov Money")}
+                                className="px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 rounded text-[9px] font-extrabold cursor-pointer hover:bg-blue-100 uppercase"
+                                title="Règlement par Moov Money"
+                              >
+                                Moov
+                              </button>
+                              <button
+                                onClick={() => onPayInvoice(inv.id, "Carte bancaire")}
+                                className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 text-slate-700 rounded text-[9px] font-extrabold cursor-pointer hover:bg-slate-200 uppercase"
+                                title="Règlement par Carte de Crédit"
+                              >
+                                CB
+                              </button>
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-400">Sélectionnez le canal</span>
                           </div>
                         )}
                       </td>

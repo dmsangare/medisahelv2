@@ -194,15 +194,16 @@ export const INITIAL_TRIAGE: TriageRecord[] = [
 ];
 
 export const HOSPITAL_STAFF_ACCOUNTS: UserAccount[] = [
-  { id: "user-admin", name: "Sidi Coulibaly (SysAdmin)", role: "Administrateur Système", isActive: true },
+  { id: "user-admin", name: "Sidi Coulibaly (SysAdmin)", role: "Administrateur Système", isActive: true, allowedIPs: "192.168.1.*" },
   { id: "user-dr-sangare", name: "Dr. Amadou Sangaré", role: "Médecin", isActive: true },
   { id: "user-inf-fatoumata", name: "Infirmier(e) Fatoumata Maïga", role: "Infirmier", isActive: true },
   { id: "user-sage-fanta", name: "Sage-femme Fanta Diallo", role: "Sage-femme", isActive: true },
+  { id: "user-aide-mariam", name: "Aide-soignante Mariam Diallo", role: "Aide-soignant", isActive: true, allowedHoursStart: "08:00", allowedHoursEnd: "18:00" },
   { id: "user-lab-tangara", name: "Laborantin Amara Tangara", role: "Laborantin", isActive: true },
   { id: "user-rx-diarra", name: "Radiologue Dr. Diarra", role: "Radiologue", isActive: true },
   { id: "user-rx-pharmacien", name: "Pharmacienne Aminata", role: "Pharmacien", isActive: true },
-  { id: "user-recep-ouattara", name: "Réceptionniste Ouattara", role: "Réceptionniste", isActive: true },
-  { id: "user-caiss-maiga", name: "Caissier Ibrahim Maïga", role: "Caissier", isActive: true },
+  { id: "user-recep-ouattara", name: "Réceptionniste Ouattara", role: "Réceptionniste", isActive: true, allowedHoursStart: "07:30", allowedHoursEnd: "19:30" },
+  { id: "user-caiss-maiga", name: "Caissier Ibrahim Maïga", role: "Caissier", isActive: true, allowedHoursStart: "08:00", allowedHoursEnd: "18:00" },
   { id: "user-dg-dr-traore", name: "DG Dr. Moussa Traoré", role: "DG", isActive: true }
 ];
 

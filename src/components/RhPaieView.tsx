@@ -42,16 +42,144 @@ export default function RhPaieView({
     { id: "user-caiss-maiga", name: "Caissier Ibrahim Maïga", role: "Caissier" }
   ];
 
+  // Local departures and custom presence logs state to complement the parents
+  const [localPresences, setLocalPresences] = useState<Array<{
+    id: string;
+    nomPrenom: string;
+    role: string;
+    heureArrivee: string;
+    heureDepart?: string;
+    statut: "Présent" | "Retard" | "Absent" | "Justifié";
+    justification?: string;
+  }>>(() => {
+    const saved = localStorage.getItem("rh_local_presences_v3");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const allPresencesCombined = [
+    ...presences.map(p => {
+      const loc = localPresences.find(lp => lp.nomPrenom === p.nomPrenom);
+      if (loc) {
+        return {
+          ...p,
+          heureDepart: loc.heureDepart || undefined,
+          statut: loc.statut,
+          justification: loc.justification || p.justification
+        };
+      }
+      return p;
+    }),
+    ...localPresences.filter(lp => !presences.some(p => p.nomPrenom === lp.nomPrenom))
+  ];
+
+  const [punchActionType, setPunchActionType] = useState<"Arrivée" | "Départ">("Arrivée");
+
   const handlePunch = (e: FormEvent) => {
     e.preventDefault();
-    onClockIn(clockInName, clockInRole);
+    if (!clockInName) return;
+
+    const matchedAccount = staffAccounts.find(s => s.name === clockInName);
+    const roleString = matchedAccount ? matchedAccount.role : clockInRole;
+
+    const nowStr = new Date().toLocaleTimeString("fr-FR").slice(0, 5); // ex: "08:15"
+
+    if (punchActionType === "Arrivée") {
+      // Check if late (after 08:00)
+      const hours = parseInt(nowStr.split(":")[0]) || 0;
+      const mins = parseInt(nowStr.split(":")[1]) || 0;
+      const totalMins = hours * 60 + mins;
+      const limitMins = 8 * 60; // 08:00
+
+      const assignedStatut = totalMins > limitMins ? "Retard" : "Présent";
+
+      const existingLocal = localPresences.find(lp => lp.nomPrenom === clockInName);
+      if (existingLocal) {
+        alert(`${clockInName} est déjà enregistré à l'arrivée aujourd'hui (${existingLocal.heureArrivee}).`);
+        return;
+      }
+
+      onClockIn(clockInName, roleString);
+
+      const newP = {
+        id: `PRES-${Date.now().toString().slice(-4)}`,
+        nomPrenom: clockInName,
+        role: roleString,
+        heureArrivee: nowStr,
+        statut: assignedStatut as any
+      };
+
+      const updated = [newP, ...localPresences];
+      setLocalPresences(updated);
+      localStorage.setItem("rh_local_presences_v3", JSON.stringify(updated));
+
+      alert(`[Arrivée] Enregistrée pour ${clockInName} à ${nowStr}. Statut attribué : ${assignedStatut}.`);
+    } else {
+      // Départ (Clock-out)
+      const existing = localPresences.find(lp => lp.nomPrenom === clockInName);
+      if (!existing) {
+        // Create an arrival first or clock out on top of parent row
+        const newP = {
+          id: `PRES-${Date.now().toString().slice(-4)}`,
+          nomPrenom: clockInName,
+          role: roleString,
+          heureArrivee: "08:00",
+          heureDepart: nowStr,
+          statut: "Présent" as const
+        };
+        const updated = [newP, ...localPresences];
+        setLocalPresences(updated);
+        localStorage.setItem("rh_local_presences_v3", JSON.stringify(updated));
+        alert(`[Départ] Enregistré pour ${clockInName} à ${nowStr} (Arrivée par défaut réglée à 08h00).`);
+      } else {
+        const updated = localPresences.map(lp => {
+          if (lp.nomPrenom === clockInName) {
+            return {
+              ...lp,
+              heureDepart: nowStr
+            };
+          }
+          return lp;
+        });
+        setLocalPresences(updated);
+        localStorage.setItem("rh_local_presences_v3", JSON.stringify(updated));
+        alert(`[Départ OK] Enregistré pour ${clockInName} à ${nowStr}. Service quotidien validé.`);
+      }
+    }
+
     setClockInName("");
-    alert(`Pointage d'arrivée enregistré pour ${clockInName} à ${new Date().toLocaleTimeString("fr-FR").slice(0, 5)}.`);
   };
 
   const handleApplyExcuse = (idString: string) => {
     if (!excuseText) return;
-    // Modifies just locally for UX high-fidelity
+
+    // Save excuse locally to override status
+    const updated = localPresences.map(lp => {
+      if (lp.id === idString || lp.nomPrenom === idString) {
+        return { ...lp, statut: "Justifié" as const, justification: excuseText };
+      }
+      return lp;
+    });
+
+    // Check if the target is in the parent list
+    const foundLocal = localPresences.some(lp => lp.id === idString || lp.nomPrenom === idString);
+    if (!foundLocal) {
+      // Insert placeholder with excuse
+      const parentRow = presences.find(p => p.id === idString);
+      const newP = {
+        id: idString,
+        nomPrenom: parentRow ? parentRow.nomPrenom : idString,
+        role: parentRow ? parentRow.role : "Agent",
+        heureArrivee: parentRow ? parentRow.heureArrivee : "08:35",
+        statut: "Justifié" as const,
+        justification: excuseText
+      };
+      setLocalPresences([newP, ...localPresences]);
+      localStorage.setItem("rh_local_presences_v3", JSON.stringify([newP, ...localPresences]));
+    } else {
+      setLocalPresences(updated);
+      localStorage.setItem("rh_local_presences_v3", JSON.stringify(updated));
+    }
+
     alert("Justification enregistrée avec succès. Le statut passe en 'Justifié'.");
     setExcuseId(null);
     setExcuseText("");
@@ -210,14 +338,40 @@ export default function RhPaieView({
               <Clock className="h-4 w-4 text-sky-600" /> Horodateur de Services Locaux
             </h3>
 
-            <p className="text-[10.5px] text-slate-400 font-medium">Les arrivées après 08h00 sont automatiquement notifiées sous statut "Retard". Les absences non-justifiées s'intègrent aux calculs de déductions de paie.</p>
+            <p className="text-[10.5px] text-slate-400 font-medium">
+              Les arrivées après 08h00 sont automatiquement notifiées sous statut "Retard". Les départs calculent la durée totale travaillée.
+            </p>
 
             <form onSubmit={handlePunch} className="space-y-3.5">
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1">Employé</label>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1">Action de Pointage</label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setPunchActionType("Arrivée")}
+                    className={`py-1.5 text-center font-bold text-[10.5px] rounded transition-all cursor-pointer ${
+                      punchActionType === "Arrivée" ? "bg-white text-slate-950 shadow-xs" : "text-slate-500"
+                    }`}
+                  >
+                    Arrivée (Entrée)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPunchActionType("Départ")}
+                    className={`py-1.5 text-center font-bold text-[10.5px] rounded transition-all cursor-pointer ${
+                      punchActionType === "Départ" ? "bg-white text-slate-950 shadow-xs" : "text-slate-500"
+                    }`}
+                  >
+                    Départ (Sortie)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1">Employé de Garde</label>
                 <select
                   required
-                  className="w-full text-xs p-2.5 rounded border border-slate-300 bg-white font-semibold"
+                  className="w-full text-xs p-2.5 rounded border border-slate-300 bg-white font-semibold outline-none"
                   value={clockInName}
                   onChange={(e) => {
                     setClockInName(e.target.value);
@@ -234,10 +388,10 @@ export default function RhPaieView({
 
               <button
                 type="submit"
-                className="w-full text-white font-bold p-2.5 rounded-lg cursor-pointer text-center text-xs"
+                className="w-full text-white font-bold p-2.5 rounded-lg cursor-pointer text-center text-xs transition-all hover:bg-opacity-90 uppercase"
                 style={{ backgroundColor: accentColor }}
               >
-                Signer Registre Arrivée
+                Signer Registre : {punchActionType}
               </button>
             </form>
 
@@ -248,7 +402,7 @@ export default function RhPaieView({
                 <input
                   type="text"
                   placeholder="ex: Panne mototaxi, motif de santé d'épreuve"
-                  className="w-full p-2 border border-slate-350 bg-white text-xs font-semibold"
+                  className="w-full p-2 border border-slate-350 bg-white text-xs font-semibold rounded"
                   value={excuseText}
                   onChange={(e) => setExcuseText(e.target.value)}
                 />
@@ -281,21 +435,39 @@ export default function RhPaieView({
                     <th className="px-4 py-2">Praticien / Agent</th>
                     <th className="px-4 py-2">Rôle étable</th>
                     <th className="px-4 py-2">Arrivée</th>
+                    <th className="px-4 py-2">Départ</th>
+                    <th className="px-4 py-2">Temps Effectif</th>
                     <th className="px-4 py-2">Statut Heure</th>
                     <th className="px-4 py-2 text-center">Justifications</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {presences.map((p) => {
+                  {allPresencesCombined.map((p) => {
                     const isRetard = p.statut === "Retard";
                     const isAbs = p.statut === "Absent";
-                    const hasExcuse = p.statut === "Justifié" || excuseId === p.id;
+                    const hasExcuse = p.statut === "Justifié" || excuseId === p.id || excuseId === p.nomPrenom;
+
+                    // Calculate worked duration safely
+                    let durationText = "-";
+                    if (p.heureArrivee && p.heureDepart) {
+                      const [arrH, arrM] = p.heureArrivee.split(":").map(Number);
+                      const [depH, depM] = p.heureDepart.split(":").map(Number);
+                      if (!isNaN(arrH) && !isNaN(depH)) {
+                        let diffMins = (depH * 60 + depM) - (arrH * 60 + arrM);
+                        if (diffMins < 0) diffMins += 24 * 60; // loop
+                        const hoursWorked = Math.floor(diffMins / 60);
+                        const minsWorked = diffMins % 60;
+                        durationText = `${hoursWorked}h ${minsWorked}m`;
+                      }
+                    }
 
                     return (
                       <tr key={p.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 font-bold text-slate-900">{p.nomPrenom}</td>
                         <td className="px-4 py-3">{p.role}</td>
-                        <td className="px-4 py-3 font-mono text-[11px]">{p.heureArrivee}</td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-600">{p.heureArrivee || "-"}</td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-600">{p.heureDepart || "-"}</td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-sky-850 font-bold">{durationText}</td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full border text-[9px] font-extrabold ${
                             isAbs 
@@ -316,7 +488,10 @@ export default function RhPaieView({
                               Justifier
                             </button>
                           ) : p.justification || hasExcuse ? (
-                            <span className="text-[10px] text-slate-400 font-sans italic">Motif accepté</span>
+                            <div className="flex flex-col text-[9.5px] text-slate-400 font-sans leading-none">
+                              <span className="font-bold italic">Motif accepté</span>
+                              {p.justification && <span className="text-[8px] text-slate-400/80">({p.justification})</span>}
+                            </div>
                           ) : (
                             <span className="text-slate-350">-</span>
                           )}

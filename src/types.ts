@@ -17,14 +17,25 @@ export interface UserAccount {
   role: UserRole;
   isActive: boolean;
   avatarUrl?: string;
+  // Advanced RBAC Extensions according to Specifications
+  allowedModules?: string[];     // e.g. ["patients", "dme", "billing"]
+  allowedActions?: string[];     // e.g. ["write", "delete", "prescribe", "validate"]
+  allowedSites?: string[];       // e.g. ["site-bamako", "site-mopti"]
+  allowedDepartments?: string[]; // e.g. ["Maternité", "Urgences", "Médecine Générale"]
+  allowedDataTypes?: string[];   // e.g. ["Dossiers médicaux chiffrés", "Données financières cliniques"]
+  allowedHoursStart?: string;    // e.g. "08:00"
+  allowedHoursEnd?: string;      // e.g. "18:00"
+  allowedIPs?: string;           // e.g. "192.168.1.*"
 }
 
 export interface ClinicBranding {
   name: string;
+  appName: string;
   slogan: string;
   primaryColor: string;
   secondaryColor: string;
   logoUrl?: string;
+  faviconUrl?: string;
   activeModules: Record<string, boolean>;
 }
 
@@ -46,6 +57,10 @@ export interface Patient {
   contactUrgenceNom?: string;
   contactUrgenceTel?: string;
   isArchive?: boolean;
+  nationalite?: string;
+  lieuNaissance?: string;
+  ethnie?: string;
+  antecedents?: string;
 }
 
 export interface Appointment {
@@ -187,4 +202,6 @@ export interface AuditLog {
   action: string;
   details: string;
   ip: string;
+  oldValue?: string;
+  newValue?: string;
 }

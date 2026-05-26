@@ -14,10 +14,12 @@ app.use(express.json());
 // In-Memory Database for Simulation and Sync
 let clinicBranding = {
   name: "MédiSahel Clinique",
+  appName: "MEDISHAHEL",
   slogan: "L'excellence des soins au cœur du Sahel",
   primaryColor: "#0284c7", // sky-600
   secondaryColor: "#0f766e", // teal-700
   logoUrl: "",
+  faviconUrl: "💉", 
   activeModules: {
     patients: true,
     rdv: true,
@@ -256,7 +258,7 @@ app.get("/api/audit-logs", (req, res) => {
 });
 
 app.post("/api/audit-logs", (req, res) => {
-  const { user, role, action, details } = req.body;
+  const { user, role, action, details, oldValue, newValue } = req.body;
   const newLog = {
     id: "log_" + Date.now(),
     timestamp: new Date().toISOString(),
@@ -264,7 +266,9 @@ app.post("/api/audit-logs", (req, res) => {
     role: role || 'Visiteur',
     action: action || 'Action',
     details: details || '',
-    ip: req.ip || "127.0.0.1"
+    ip: req.ip || "127.0.0.1",
+    oldValue: oldValue || '',
+    newValue: newValue || ''
   };
   auditLogs.unshift(newLog);
   if (auditLogs.length > 200) auditLogs.pop(); // Keep size check
