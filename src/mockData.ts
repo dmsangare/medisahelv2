@@ -143,12 +143,16 @@ export const INITIAL_RECORDS: MedicalRecord[] = [
 ];
 
 export const INITIAL_BEDS: BedAllocation[] = [
-  { id: "Lit-101", chambre: "Chambre 101 (Individuelle)", service: "Médecine Générale", statut: "Occupé", patientId: "MS-2026-0045", patientNom: "Amadou Diarra", temperature: 37.8, frequenceCardiaque: 82, soinsInfirmiersLogs: ["08:00 - Administration Amlodipine 5mg", "12:00 - Prise de température (37.8°C), constantes stables"] },
+  { id: "Lit-101", chambre: "Chambre 101 (Individuelle)", service: "Médecine Générale", statut: "Occupé", patientId: "MS-2026-0045", patientNom: "Amadou Diarra", temperature: 37.8, frequenceCardiaque: 82, soinsInfirmiersLogs: ["08:00 - Administration Amlodipine 5mg", "12:00 - Prise de température (37.8°C), constantes stables"], dateAdmission: "2026-05-26" },
   { id: "Lit-102", chambre: "Chambre 102 (Double - A)", service: "Urgences", statut: "Disponible" },
   { id: "Lit-103", chambre: "Chambre 102 (Double - B)", service: "Urgences", statut: "Disponible" },
   { id: "Lit-104", chambre: "Chambre 201 (Maternité - A)", service: "Maternité / CPN", statut: "Disponible" },
-  { id: "Lit-105", chambre: "Chambre 201 (Maternité - B)", service: "Maternité / CPN", statut: "Occupé", patientId: "MS-2026-0048", patientNom: "Mariam Keïta", temperature: 36.9, frequenceCardiaque: 72, soinsInfirmiersLogs: ["09:00 - Monitoring fœtal normal", "15:00 - Patiente stable, repos au lit"] },
-  { id: "Lit-106", chambre: "Chambre de Triage 1", service: "Urgences", statut: "Maintenance" }
+  { id: "Lit-105", chambre: "Chambre 201 (Maternité - B)", service: "Maternité / CPN", statut: "Occupé", patientId: "MS-2026-0048", patientNom: "Mariam Keïta", temperature: 36.9, frequenceCardiaque: 72, soinsInfirmiersLogs: ["09:00 - Monitoring fœtal normal", "15:00 - Patiente stable, repos au lit"], dateAdmission: "2026-05-25" },
+  { id: "Lit-106", chambre: "Chambre de Triage 1", service: "Urgences", statut: "Maintenance" },
+  { id: "Lit-107", chambre: "Chambre 103 (Soins Intensifs)", service: "Urgences", statut: "Disponible" },
+  { id: "Lit-108", chambre: "Chambre 202 (Pédiatrie - A)", service: "Pédiatrie", statut: "Disponible" },
+  { id: "Lit-109", chambre: "Chambre 202 (Pédiatrie - B)", service: "Pédiatrie", statut: "Disponible" },
+  { id: "Lit-110", chambre: "Chambre 301 (Chirurgie)", service: "Chirurgie", statut: "Disponible" }
 ];
 
 export const INITIAL_LAB_TESTS: LabTest[] = [
@@ -194,17 +198,17 @@ export const INITIAL_TRIAGE: TriageRecord[] = [
 ];
 
 export const HOSPITAL_STAFF_ACCOUNTS: UserAccount[] = [
-  { id: "user-admin", name: "Sidi Coulibaly (SysAdmin)", role: "Administrateur Système", isActive: true, allowedIPs: "192.168.1.*" },
-  { id: "user-dr-sangare", name: "Dr. Amadou Sangaré", role: "Médecin", isActive: true },
-  { id: "user-inf-fatoumata", name: "Infirmier(e) Fatoumata Maïga", role: "Infirmier", isActive: true },
-  { id: "user-sage-fanta", name: "Sage-femme Fanta Diallo", role: "Sage-femme", isActive: true },
-  { id: "user-aide-mariam", name: "Aide-soignante Mariam Diallo", role: "Aide-soignant", isActive: true, allowedHoursStart: "08:00", allowedHoursEnd: "18:00" },
-  { id: "user-lab-tangara", name: "Laborantin Amara Tangara", role: "Laborantin", isActive: true },
-  { id: "user-rx-diarra", name: "Radiologue Dr. Diarra", role: "Radiologue", isActive: true },
-  { id: "user-rx-pharmacien", name: "Pharmacienne Aminata", role: "Pharmacien", isActive: true },
-  { id: "user-recep-ouattara", name: "Réceptionniste Ouattara", role: "Réceptionniste", isActive: true, allowedHoursStart: "07:30", allowedHoursEnd: "19:30" },
-  { id: "user-caiss-maiga", name: "Caissier Ibrahim Maïga", role: "Caissier", isActive: true, allowedHoursStart: "08:00", allowedHoursEnd: "18:00" },
-  { id: "user-dg-dr-traore", name: "DG Dr. Moussa Traoré", role: "DG", isActive: true }
+  { id: "user-admin", name: "Sidi Coulibaly (SysAdmin)", role: "Administrateur Système", isActive: true, username: "admin", password: "AdminPassword2026!", allowedIPs: "192.168.1.*" },
+  { id: "user-dr-sangare", name: "Dr. Amadou Sangaré", role: "Médecin", isActive: true, username: "dr_sangare", password: "DoctorPassword2026!" },
+  { id: "user-inf-fatoumata", name: "Infirmier(e) Fatoumata Maïga", role: "Infirmier", isActive: true, username: "inf_fatoumata", password: "NursePassword2026!" },
+  { id: "user-sage-fanta", name: "Sage-femme Fanta Diallo", role: "Sage-femme", isActive: true, username: "sage_fanta", password: "MidwifePassword2026!" },
+  { id: "user-aide-mariam", name: "Aide-soignante Mariam Diallo", role: "Aide-soignant", isActive: true, username: "aide_mariam", password: "AidePassword2026!", allowedHoursStart: "08:00", allowedHoursEnd: "18:00" },
+  { id: "user-lab-tangara", name: "Laborantin Amara Tangara", role: "Laborantin", isActive: true, username: "lab_tangara", password: "LabPassword2026!" },
+  { id: "user-rx-diarra", name: "Radiologue Dr. Diarra", role: "Radiologue", isActive: true, username: "rx_diarra", password: "RadiologistPassword2026!" },
+  { id: "user-rx-pharmacien", name: "Pharmacienne Aminata", role: "Pharmacien", isActive: true, username: "rx_pharmacien", password: "PharmacistPassword2026!" },
+  { id: "user-recep-ouattara", name: "Réceptionniste Ouattara", role: "Réceptionniste", isActive: true, username: "recep-ouattara", password: "ReceptionPassword2026!", allowedHoursStart: "07:30", allowedHoursEnd: "19:30" },
+  { id: "user-caiss-maiga", name: "Caissier Ibrahim Maïga", role: "Caissier", isActive: true, username: "caiss_maiga", password: "CashierPassword2026!", allowedHoursStart: "08:00", allowedHoursEnd: "18:00" },
+  { id: "user-dg-dr-traore", name: "DG Dr. Moussa Traoré", role: "DG", isActive: true, username: "dg_dr_traore", password: "DirectorPassword2026!" }
 ];
 
 // Offline Queue manager helper using LocalStorage to emulate IndexedDB/Workbox

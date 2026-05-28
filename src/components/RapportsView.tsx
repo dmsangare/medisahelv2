@@ -343,8 +343,7 @@ export default function RapportsView({
 
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={handleCSVExport}
-                  onClickCapture={handleExportSNIS}
+                  onClick={handleExportSNIS}
                   className="bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-bold py-1.5 px-3 rounded-lg border border-emerald-200 flex items-center gap-1 cursor-pointer transition-colors"
                 >
                   <FileSpreadsheet className="h-4 w-4" /> Export CSV (Excel)

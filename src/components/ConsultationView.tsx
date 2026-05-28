@@ -1,4 +1,4 @@
-import { useState, FormEvent, useRef } from "react";
+import { useState, FormEvent, useRef, useEffect } from "react";
 import { Patient, MedicalRecord } from "../types";
 import AIDiagnosisPanel from "./AIDiagnosisPanel";
 import { Stethoscope, Check, FileText, Calendar, Plus, UserCheck, Edit3, Paperclip, ShieldCheck, Printer } from "lucide-react";
@@ -8,15 +8,23 @@ interface ConsultationViewProps {
   records: MedicalRecord[];
   onAddRecord: (newRec: Omit<MedicalRecord, "id" | "date" | "createdAt" | "medecinSignature">) => void;
   accentColor: string;
+  selectedPatientId?: string;
 }
 
 export default function ConsultationView({
   patients,
   records,
   onAddRecord,
-  accentColor
+  accentColor,
+  selectedPatientId: externalSelectedPatientId
 }: ConsultationViewProps) {
   const [selectedPatientId, setSelectedPatientId] = useState("");
+
+  useEffect(() => {
+    if (externalSelectedPatientId) {
+      setSelectedPatientId(externalSelectedPatientId);
+    }
+  }, [externalSelectedPatientId]);
   const [motif, setMotif] = useState("");
   const [diagnostic, setDiagnostic] = useState("");
   const [codeCIM10, setCodeCIM10] = useState("");

@@ -59,6 +59,8 @@ import CourrierView from "./components/CourrierView";
 import TeleconsultationView from "./components/TeleconsultationView";
 import RapportsView from "./components/RapportsView";
 import MutuellesView from "./components/MutuellesView";
+import LoginView from "./components/LoginView";
+import { SearchCommandPalette } from "./components/SearchCommandPalette";
 
 import { 
   Activity, 
@@ -89,6 +91,12 @@ import {
 } from "lucide-react";
 
 export default function App() {
+  // Zero-Trust Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem("medishahel_token"));
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(true);
+
   // Offline State simulator
   const [isOffline, setIsOffline] = useState(false);
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueItem[]>([]);
@@ -146,10 +154,118 @@ export default function App() {
   // Universal Ctrl+K Search Command Palette states
   const [showSearchPalette, setShowSearchPalette] = useState(false);
   const [paletteSearchQuery, setPaletteSearchQuery] = useState("");
+  const [selectedPatientIdForViews, setSelectedPatientIdForViews] = useState<string>("");
+
+  const handleSelectItemRedirect = (item: any) => {
+    if (item.type === "PATIENT") {
+      setSelectedPatientIdForViews(item.id);
+    } else if (item.type === "DME" || item.type === "RDV" || item.type === "HOSPITALISATION" || item.type === "LABO") {
+      let matchedPatientId = "";
+      if (item.type === "DME") {
+        const dmeRec: any = records.find((r: any) => r.id === item.id);
+        if (dmeRec) matchedPatientId = dmeRec.patientId;
+      } else if (item.type === "RDV") {
+        const rdvRec = appointments.find(a => a.id === item.id);
+        if (rdvRec) matchedPatientId = rdvRec.patientId;
+      } else if (item.type === "HOSPITALISATION") {
+        const hospRec = beds.find(h => h.id === item.id);
+        if (hospRec) matchedPatientId = hospRec.patientId || "";
+      } else if (item.type === "LABO") {
+        const labRec = labTests.find(l => l.id === item.id);
+        if (labRec) matchedPatientId = labRec.patientId;
+      }
+      if (matchedPatientId) {
+        setSelectedPatientIdForViews(matchedPatientId);
+      }
+    }
+    setActiveTab(item.tabTarget);
+  };
 
   // Loading indicator for syncing
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+
+  // Verify token of active session
+  useEffect(() => {
+    if (authToken) {
+      setIsVerifyingSession(true);
+      fetch("/api/auth/verify", {
+        headers: {
+          "Authorization": `Bearer ${authToken}`
+        }
+      })
+      .then(r => {
+        if (!r.ok) throw new Error("session expirée ou invalide");
+        return r.json();
+      })
+      .then(data => {
+        setIsAuthenticated(true);
+        setCurrentUser(data.user);
+        setActiveRole(data.user.role);
+        setActiveUser(data.user.name);
+      })
+      .catch((err) => {
+        console.error("Authentication check failed:", err);
+        localStorage.removeItem("medishahel_token");
+        setAuthToken(null);
+        setIsAuthenticated(false);
+      })
+      .finally(() => {
+        setIsVerifyingSession(false);
+      });
+    } else {
+      setIsAuthenticated(false);
+      setIsVerifyingSession(false);
+    }
+  }, [authToken]);
+
+  // Session Inactivity Auto-logout
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let timeoutId: any;
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      // Log out after 10 minutes (600	,000 ms) of absolute inactivity
+      timeoutId = setTimeout(() => {
+        handleLogout("Votre session a expiré suite à une inactivité prolongée.");
+      }, 10 * 60 * 1000);
+    };
+
+    window.addEventListener("mousemove", resetTimer);
+    window.addEventListener("keydown", resetTimer);
+    window.addEventListener("click", resetTimer);
+    window.addEventListener("scroll", resetTimer);
+
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      window.removeEventListener("mousemove", resetTimer);
+      window.removeEventListener("keydown", resetTimer);
+      window.removeEventListener("click", resetTimer);
+      window.removeEventListener("scroll", resetTimer);
+    };
+  }, [isAuthenticated]);
+
+  const handleLoginSuccess = (token: string, user: any) => {
+    localStorage.setItem("medishahel_token", token);
+    setAuthToken(token);
+    setIsAuthenticated(true);
+    setCurrentUser(user);
+    setActiveRole(user.role);
+    setActiveUser(user.name);
+    logSystemAction("Connexion réussie", `Utilisateur connecté avec succès sous le profil ${user.role} (${user.name})`);
+  };
+
+  const handleLogout = (message = "Déconnexion réussie : Session fermée.") => {
+    localStorage.removeItem("medishahel_token");
+    setAuthToken(null);
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    alert(message);
+  };
 
   // Initialize data
   useEffect(() => {
@@ -163,24 +279,49 @@ export default function App() {
         console.log("Using offline default branding config.");
       });
 
-    // 2. Load lists with Local Storage backups (simulating Client IndexedDB)
-    setPatients(loadFromLocal("patients", INITIAL_PATIENTS));
-    setAppointments(loadFromLocal("appointments", INITIAL_APPOINTMENTS as any));
-    setRecords(loadFromLocal("records", INITIAL_RECORDS as any));
-    setBeds(loadFromLocal("beds", INITIAL_BEDS));
-    setLabTests(loadFromLocal("labTests", INITIAL_LAB_TESTS));
+    const token = authToken || localStorage.getItem("medishahel_token");
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+
+    const fetchOrFallback = (url: string, key: string, fallbackData: any, setter: Function) => {
+      fetch(url, { headers })
+        .then(res => {
+          if (!res.ok) throw new Error("Server error");
+          return res.json();
+        })
+        .then(data => {
+          if (Array.isArray(data)) {
+            setter(data);
+            saveToLocal(key, data);
+          } else {
+            setter(loadFromLocal(key, fallbackData));
+          }
+        })
+        .catch(() => {
+          setter(loadFromLocal(key, fallbackData));
+        });
+    };
+
+    fetchOrFallback("/api/patients", "patients", INITIAL_PATIENTS, setPatients);
+    fetchOrFallback("/api/appointments", "appointments", INITIAL_APPOINTMENTS, setAppointments);
+    fetchOrFallback("/api/medical-records", "records", INITIAL_RECORDS, setRecords);
+    fetchOrFallback("/api/hospitalizations", "beds", INITIAL_BEDS, setBeds);
+    fetchOrFallback("/api/lab-tests", "labTests", INITIAL_LAB_TESTS, setLabTests);
+    fetchOrFallback("/api/stocks", "stocks", INITIAL_STOCK, setStocks);
+    fetchOrFallback("/api/invoices", "invoices", INITIAL_INVOICES, setInvoices);
+    fetchOrFallback("/api/presences", "presences", INITIAL_PRESENCE, setPresences);
+    fetchOrFallback("/api/mails", "mails", INITIAL_MAILS, setMails);
+
     setImages(loadFromLocal("images", INITIAL_IMAGING));
-    setStocks(loadFromLocal("stocks", INITIAL_STOCK));
-    setInvoices(loadFromLocal("invoices", INITIAL_INVOICES));
-    setPresences(loadFromLocal("presences", INITIAL_PRESENCE));
-    setMails(loadFromLocal("mails", INITIAL_MAILS));
     setTriages(loadFromLocal("triages", INITIAL_TRIAGE));
-    setUsers(loadFromLocal("users", HOSPITAL_STAFF_ACCOUNTS));
+    fetchOrFallback("/api/users", "users", HOSPITAL_STAFF_ACCOUNTS, setUsers);
     setOfflineQueue(getOfflineQueue());
 
     // 3. Fetch logs
     fetchLogs();
-  }, []);
+  }, [authToken]);
 
   // Listen to keyboard shortcuts (Ctrl + K)
   useEffect(() => {
@@ -198,7 +339,12 @@ export default function App() {
   }, []);
 
   const fetchLogs = () => {
-    fetch("/api/audit-logs")
+    const token = authToken || localStorage.getItem("medishahel_token");
+    fetch("/api/audit-logs", {
+      headers: {
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      }
+    })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setAuditLogs(data);
@@ -219,9 +365,13 @@ export default function App() {
 
     if (!isOffline) {
       try {
+        const token = authToken || localStorage.getItem("medishahel_token");
         await fetch("/api/audit-logs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          },
           body: JSON.stringify(logBody)
         });
         fetchLogs();
@@ -304,7 +454,7 @@ export default function App() {
 
     // 5. Default Role permissions
     const defaultModules: Record<UserRole, string[]> = {
-      "Administrateur Système": ["dashboard", "patients", "specialized", "agenda", "hospitalisation", "rh-paie", "courrier"],
+      "Administrateur Système": ["dashboard", "patients", "consultation", "billing", "specialized", "agenda", "hospitalisation", "rh-paie", "courrier", "teleconsultation", "rapports", "mutuelles", "settings"],
       "Médecin": ["dashboard", "patients", "consultation", "specialized", "agenda", "hospitalisation", "teleconsultation", "rapports"],
       "Infirmier": ["dashboard", "patients", "agenda", "hospitalisation", "specialized", "courrier"],
       "Sage-femme": ["dashboard", "patients", "consultation", "agenda", "hospitalisation", "teleconsultation"],
@@ -331,9 +481,13 @@ export default function App() {
     const tQueue = offlineQueue.filter(item => item.type === "TRIAGE").map(i => i.payload);
 
     try {
+      const token = authToken || localStorage.getItem("medishahel_token");
       const resp = await fetch("/api/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           patients: pQueue,
           rdvs: rQueue,
@@ -382,6 +536,16 @@ export default function App() {
         timestamp: new Date().toISOString()
       });
       setOfflineQueue(getOfflineQueue());
+    } else {
+      const token = authToken || localStorage.getItem("medishahel_token");
+      fetch("/api/patients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(newPatient)
+      }).catch(err => console.log("Offline backup replica active:", err));
     }
     logSystemAction("Création de dossier", `Patient unique ${newPatient.nom} enregistré (${nextId})`);
   };
@@ -400,6 +564,18 @@ export default function App() {
     const updated = [newRec, ...records];
     setRecords(updated as any);
     saveToLocal("records", updated as any);
+
+    if (!isOffline) {
+      const token = authToken || localStorage.getItem("medishahel_token");
+      fetch("/api/medical-records", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(newRec)
+      }).catch(err => console.log("DME Postgres replication offline:", err));
+    }
 
     // Push requested exams to lab tests automatically !
     if (data.examensDemandes && data.examensDemandes.length > 0) {
@@ -428,6 +604,18 @@ export default function App() {
           saveToLocal("labTests", uLabs);
           return uLabs;
         });
+
+        if (!isOffline) {
+          const token = authToken || localStorage.getItem("medishahel_token");
+          fetch("/api/lab-tests", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify(newLab)
+          }).catch(err => console.log("Lab Postgres replication offline:", err));
+        }
       });
     }
 
@@ -436,14 +624,18 @@ export default function App() {
 
   // 3. Billing pay action
   const handlePayInvoice = (invoiceId: string, mode: Invoice["modePaiement"]) => {
+    const payPayload = {
+      statut: "Payé" as const,
+      modePaiement: mode,
+      datePaiement: new Date().toISOString().split("T")[0],
+      caissier: activeUser
+    };
+
     const updated = invoices.map(inv => {
       if (inv.id === invoiceId) {
         return {
           ...inv,
-          statut: "Payé" as const,
-          modePaiement: mode,
-          datePaiement: new Date().toISOString().split("T")[0],
-          caissier: activeUser
+          ...payPayload
         };
       }
       return inv;
@@ -451,6 +643,19 @@ export default function App() {
 
     setInvoices(updated);
     saveToLocal("invoices", updated);
+
+    if (!isOffline) {
+      const token = authToken || localStorage.getItem("medishahel_token");
+      fetch(`/api/invoices/${invoiceId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payPayload)
+      }).catch(err => console.log("Postgres Invoice Payment update offline:", err));
+    }
+
     logSystemAction("Encaissement Facture", `Facture #${invoiceId} acquittée via ${mode}`);
   };
 
@@ -466,6 +671,19 @@ export default function App() {
     const updated = [inv, ...invoices];
     setInvoices(updated);
     saveToLocal("invoices", updated);
+
+    if (!isOffline) {
+      const token = authToken || localStorage.getItem("medishahel_token");
+      fetch("/api/invoices", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(inv)
+      }).catch(err => console.log("Postgres Invoice replication offline:", err));
+    }
+
     logSystemAction("Émission Facture", `Facture émise pour ${inv.patientNom} d'un montant de ${inv.montantTotal} FCFA`);
   };
 
@@ -551,6 +769,18 @@ export default function App() {
   };
 
   // 8. Hospitalisation Lits Admissions & Closures
+  const syncBedsWithServer = (updatedBeds: BedAllocation[]) => {
+    const token = authToken || localStorage.getItem("medishahel_token");
+    fetch("/api/hospitalizations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ beds: updatedBeds })
+    }).catch(err => console.error("Error syncing beds with server:", err));
+  };
+
   const handleAdmitPatient = (bedId: string, patientId: string) => {
     const pat = patients.find(p => p.id === patientId);
     const updated = beds.map(b => {
@@ -570,6 +800,7 @@ export default function App() {
     });
     setBeds(updated);
     saveToLocal("beds", updated);
+    syncBedsWithServer(updated);
     logSystemAction("Hospitalisation", `Lit ${bedId} occupé par le patient ${patientId}`);
   };
 
@@ -578,7 +809,7 @@ export default function App() {
       if (b.id === bedId) {
         return {
           ...b,
-          statut: "Libre" as const,
+          statut: "Disponible" as const,
           patientId: undefined,
           patientNom: undefined,
           dateAdmission: undefined,
@@ -591,6 +822,7 @@ export default function App() {
     });
     setBeds(updated);
     saveToLocal("beds", updated);
+    syncBedsWithServer(updated);
     logSystemAction("Hospitalisation", `Sortie d'hospitalisation et libération du lit ${bedId}`);
   };
 
@@ -606,6 +838,7 @@ export default function App() {
     });
     setBeds(updated);
     saveToLocal("beds", updated);
+    syncBedsWithServer(updated);
   };
 
   const handleUpdateTempAndPulse = (bedId: string, temp: number, pulse: number) => {
@@ -621,6 +854,7 @@ export default function App() {
     });
     setBeds(updated);
     saveToLocal("beds", updated);
+    syncBedsWithServer(updated);
   };
 
   // 9. Agenda & Appointment booking handlers
@@ -643,6 +877,16 @@ export default function App() {
         timestamp: new Date().toISOString()
       });
       setOfflineQueue(getOfflineQueue());
+    } else {
+      const token = authToken || localStorage.getItem("medishahel_token");
+      fetch("/api/appointments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(newAppt)
+      }).catch(err => console.log("Postgres Appointment replication offline:", err));
     }
 
     logSystemAction("Planification RDV", `Rendez-vous créé pour le patient ${data.patientNom}`);
@@ -672,6 +916,19 @@ export default function App() {
     const updated = [newMail, ...mails];
     setMails(updated);
     saveToLocal("mails", updated);
+
+    if (!isOffline) {
+      const token = authToken || localStorage.getItem("medishahel_token");
+      fetch("/api/mails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(newMail)
+      }).catch(err => console.log("Postgres Mail replication offline:", err));
+    }
+
     logSystemAction("Registre Courrier", `Courrier '${num}' enregistré (${data.type})`);
   };
 
@@ -692,9 +949,13 @@ export default function App() {
 
     if (!isOffline) {
       try {
+        const token = authToken || localStorage.getItem("medishahel_token");
         await fetch("/api/clinics/brand", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          },
           body: JSON.stringify(newB)
         });
       } catch (err) {
@@ -802,6 +1063,26 @@ export default function App() {
     (c.details && c.details.toLowerCase().includes(paletteSearchQuery.toLowerCase()))
   );
 
+  if (isVerifyingSession) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center font-sans" id="session-verification-backdrop">
+        <div className="h-8 w-8 border-4 border-sky-500/10 border-t-sky-500 rounded-full animate-spin mb-4"></div>
+        <span className="text-slate-400 text-xs font-semibold tracking-wide">MédiSahel V2 Securisé — Validation de session en cours...</span>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <LoginView 
+        onLoginSuccess={handleLoginSuccess}
+        clinicName={clinicBrand.name}
+        slogan={clinicBrand.slogan}
+        primaryColor={clinicBrand.primaryColor}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col font-sans" id="medishahel-platform-root">
       
@@ -832,62 +1113,28 @@ export default function App() {
       )}
 
       {/* Universal Search Overlay Command Modal */}
-      {showSearchPalette && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-center pt-[15vh]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg border border-slate-200 overflow-hidden h-fit animate-fade-in mx-4">
-            <div className="p-3 border-b border-slate-150 flex items-center gap-2">
-              <Search className="h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                autoFocus
-                placeholder="Raccourcis intelligents (Tapez 'médicament', 'facture', 'patient'...)"
-                className="w-full text-xs outline-none bg-transparent"
-                value={paletteSearchQuery}
-                onChange={(e) => setPaletteSearchQuery(e.target.value)}
-              />
-              <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded font-bold font-mono">ESC</span>
-            </div>
-            
-            <div className="p-2 space-y-1 max-h-[280px] overflow-y-auto">
-              {filteredCommands.map((cmd: any, idx) => (
-                <button
-                  key={idx}
-                  onClick={cmd.action}
-                  className="w-full text-left text-xs p-2.5 hover:bg-slate-50/80 rounded-lg font-semibold text-slate-700 flex items-center justify-between cursor-pointer transition-all border border-transparent hover:border-slate-100"
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[8px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider font-mono">
-                        {cmd.category}
-                      </span>
-                      <span className="text-slate-900 font-bold">{cmd.label}</span>
-                    </div>
-                    {cmd.details && <span className="text-[10px] text-slate-400 font-medium pl-1">{cmd.details}</span>}
-                  </div>
-                  <span className="text-[10px] text-sky-600 font-bold shrink-0">Accéder →</span>
-                </button>
-              ))}
-
-              {filteredCommands.length === 0 && (
-                <p className="p-4 text-center text-slate-400 text-xs italic">Aucun résultat correspondant aux critères de recherche.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <SearchCommandPalette
+        isOpen={showSearchPalette}
+        onClose={() => setShowSearchPalette(false)}
+        setActiveTab={setActiveTab}
+        authToken={authToken}
+        isOffline={isOffline}
+        isAuthorized={isAuthorized}
+        onSelectItemRedirect={handleSelectItemRedirect}
+      />
 
       {/* Main Structural Layout Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs px-4 lg:px-6 py-3 flex items-center justify-between">
         
         {/* Brand identity area */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <div 
             className="h-9 w-9 rounded-xl text-white flex items-center justify-center font-black shadow-md border animate-spin-slow cursor-pointer"
             style={{ backgroundColor: clinicBrand.primaryColor, borderColor: clinicBrand.primaryColor + "50" }}
           >
             MS
           </div>
-          <div>
+          <div className="hidden sm:block">
             <div className="flex items-center gap-2">
               <h1 className="font-bold text-sm tracking-tight text-slate-900 font-display">{clinicBrand.name}</h1>
               <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded border font-bold">V-2</span>
@@ -896,18 +1143,24 @@ export default function App() {
           </div>
         </div>
 
+        {/* Visible & Permanent Global Search Bar */}
+        <div 
+          onClick={() => setShowSearchPalette(true)}
+          className="flex-1 max-w-sm sm:max-w-md mx-2 sm:mx-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl py-2 px-3.5 flex items-center gap-2.5 cursor-pointer transition-all select-none shadow-2xs"
+          title="Rechercher patient, rdv, facture, DME (Ctrl+K)"
+          id="global-header-search-input"
+        >
+          <Search className="h-4 w-4 text-slate-400 shrink-0" />
+          <span className="text-xs text-slate-400 font-semibold truncate flex-1">
+            Rechercher patient, rdv, facture, DME, pharmacie...
+          </span>
+          <kbd className="hidden md:inline-flex bg-white text-[9.5px] text-slate-400 font-semibold font-mono border rounded px-1.5 py-0.2 leading-none shadow-3xs">
+            Ctrl+K
+          </kbd>
+        </div>
+
         {/* Dynamic global actions bar */}
-        <div className="flex items-center gap-3">
-          
-          {/* Universal Ctrl+K helper hint prompt */}
-          <button 
-            onClick={() => setShowSearchPalette(true)}
-            className="hidden sm:flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-[10px] text-slate-400 px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer"
-          >
-            <Search className="h-3 w-3" />
-            <span>Recherche</span>
-            <kbd className="bg-white px-1 border rounded text-[9px] font-mono leading-none">Ctrl+K</kbd>
-          </button>
+        <div className="flex items-center gap-3 shrink-0">
 
           {/* Physical offline connector slider */}
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
@@ -936,64 +1189,22 @@ export default function App() {
             />
           </div>
 
-          {/* Strict RBAC Profile Switcher */}
-          <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+          {/* Hardened Active Profile with Secure Logout */}
+          <div className="flex items-center gap-3 border-l border-slate-200 pl-4" id="medishahel-user-profile-badge">
             <div className="text-right hidden sm:block">
-              <span className="text-[10px] block font-extrabold text-slate-700">{activeUser}</span>
-              <span className="text-[9px] text-slate-400 block font-mono font-bold tracking-wider">{activeRole}</span>
+              <span className="text-[10px] block font-extrabold text-slate-700 uppercase">{activeUser}</span>
+              <span className="text-[9px] text-sky-700 block font-mono font-bold tracking-wider bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100">{activeRole}</span>
             </div>
             
-            <select
-              className="text-[10px] rounded-lg border border-slate-300 p-1.5 font-bold text-slate-800 bg-white outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-              value={getCurrentUserAccount()?.id || ""}
-              onChange={(e) => {
-                const userId = e.target.value;
-                const activeList = users.length > 0 ? users : HOSPITAL_STAFF_ACCOUNTS;
-                const matched = activeList.find(acc => acc.id === userId);
-                if (matched) {
-                  if (!matched.isActive) {
-                    alert(`ACCÈS REFUSÉ : Le compte de ${matched.name} (${matched.role}) est VERROUILLÉ suite aux politiques de gouvernance rigoureuse.`);
-                    return;
-                  }
-                  setActiveRole(matched.role);
-                  setActiveUser(matched.name);
-                  logSystemAction("Changement de session", `Session ouverte sous le profil ${matched.role} (${matched.name})`);
-                  
-                  // Auto redirect if current tab is not authorized
-                  const targetAuth = (tab: string) => {
-                    if (!matched.isActive) return false;
-                    if (matched.role === "Administrateur Système" && tab === "settings") return true;
-                    if (matched.role !== "Administrateur Système" && tab === "settings") return false;
-                    if (matched.allowedModules && matched.allowedModules.length > 0) {
-                      return matched.allowedModules.includes(tab);
-                    }
-                    const defaultModules: Record<UserRole, string[]> = {
-                      "Administrateur Système": ["dashboard", "patients", "specialized", "agenda", "hospitalisation", "rh-paie", "courrier"],
-                      "Médecin": ["dashboard", "patients", "consultation", "specialized", "agenda", "hospitalisation", "teleconsultation", "rapports"],
-                      "Infirmier": ["dashboard", "patients", "agenda", "hospitalisation", "specialized", "courrier"],
-                      "Sage-femme": ["dashboard", "patients", "consultation", "agenda", "hospitalisation", "teleconsultation"],
-                      "Aide-soignant": ["dashboard", "patients", "hospitalisation", "agenda"],
-                      "Laborantin": ["dashboard", "specialized"],
-                      "Radiologue": ["dashboard", "specialized"],
-                      "Pharmacien": ["dashboard", "specialized"],
-                      "Réceptionniste": ["dashboard", "patients", "agenda", "courrier"],
-                      "Caissier": ["dashboard", "billing", "mutuelles", "rapports"],
-                      "DG": ["dashboard", "rapports", "patients", "agenda", "billing", "hospitalisation", "courrier", "mutuelles"]
-                    };
-                    return (defaultModules[matched.role] || []).includes(tab);
-                  };
-                  if (!targetAuth(activeTab)) {
-                    setActiveTab("dashboard");
-                  }
-                }
-              }}
+            <button
+              onClick={() => handleLogout()}
+              className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg p-2 font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 text-[10px]"
+              title="Fermer la session sécurisée"
+              id="secure-logout-btn"
             >
-              {(users.length > 0 ? users : HOSPITAL_STAFF_ACCOUNTS).map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.role} - {acc.name} {!acc.isActive ? " [🔒 Bloqué]" : ""}
-                </option>
-              ))}
-            </select>
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">Déconnexion</span>
+            </button>
           </div>
         </div>
       </header>
@@ -1222,6 +1433,7 @@ export default function App() {
               patients={patients}
               onAddPatient={handleAddPatient}
               accentColor={clinicBrand.primaryColor}
+              selectedPatientId={selectedPatientIdForViews}
             />
           )}
 
@@ -1231,6 +1443,7 @@ export default function App() {
               records={records}
               onAddRecord={handleAddRecord}
               accentColor={clinicBrand.primaryColor}
+              selectedPatientId={selectedPatientIdForViews}
             />
           )}
 
@@ -1337,6 +1550,14 @@ export default function App() {
               onSaveUsers={(updated) => {
                 setUsers(updated);
                 saveToLocal("users", updated);
+                fetch("/api/users", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${authToken}`
+                  },
+                  body: JSON.stringify({ users: updated })
+                }).catch(err => console.error("Users post sync error:", err));
                 logSystemAction("Gouvernance RBAC", "Mise à jour de la table des habilitations et restrictions collaborateurs.");
               }}
             />

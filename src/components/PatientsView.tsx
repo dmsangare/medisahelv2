@@ -1,4 +1,4 @@
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import QRCode from "qrcode";
 import { Patient, UserRole } from "../types";
 import { PlusCircle, Search, User, Clipboard, Phone, Shield, ArrowRight, CheckCircle2, Camera, QrCode, Printer, Archive, RotateCcw, Heart } from "lucide-react";
@@ -12,10 +12,25 @@ interface PatientsViewProps {
   onAddPatient: (newPatient: Omit<Patient, "id" | "createdAt">) => void;
   accentColor: string;
   activeRole?: UserRole;
+  selectedPatientId?: string;
 }
 
-export default function PatientsView({ patients, onAddPatient, accentColor, activeRole }: PatientsViewProps) {
+export default function PatientsView({ patients, onAddPatient, accentColor, activeRole, selectedPatientId }: PatientsViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    if (selectedPatientId) {
+      setSearchTerm(selectedPatientId);
+      const found = patients.find(p => p.id === selectedPatientId);
+      if (found) {
+        setActivePreviewPatient(found);
+        // generate qr
+        QRCode.toDataURL(`ID:${found.id}|NOM:${found.nom.toUpperCase()}|TEL:${found.telephone}`)
+          .then(url => setPreviewQrUrl(url))
+          .catch(err => console.error("Error generating QR:", err));
+      }
+    }
+  }, [selectedPatientId, patients]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"actifs" | "archives">("actifs");
   const [activePreviewPatient, setActivePreviewPatient] = useState<Patient | null>(null);
@@ -541,7 +556,10 @@ export default function PatientsView({ patients, onAddPatient, accentColor, acti
                         <div>
                           <h4 className="font-bold text-xs text-slate-800">{p.nom.toUpperCase()} {p.prenom}</h4>
                           <span className="text-[10px] font-mono text-slate-400 font-semibold">{p.id}</span>
-                       <div className="flex flex-col items-end">
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end">
                         <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-extrabold ${p.sexe === "F" ? "bg-rose-50 text-rose-750" : "bg-sky-50 text-sky-750"}`}>
                           Sexe: {p.sexe}
                         </span>

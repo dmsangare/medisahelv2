@@ -1,23 +1,28 @@
 version: "3.8"
 
 services:
-  # 1. Base PostgreSQL database for offline persistence
-  postgres-db:
+  # 1. Core Production PostgreSQL engine with healthchecks and persistent volumes
+  postgres:
     image: postgres:15-alpine
     container_name: medishahel_db
     restart: always
     environment:
-      POSTGRES_USER: medishahel_admin
-      POSTGRES_PASSWORD: LocalSecurePassword2026!
-      POSTGRES_DB: medishahel_prod
+      POSTGRES_USER: medisahel_user
+      POSTGRES_PASSWORD: MotDePasseFort
+      POSTGRES_DB: medisahel_db
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - medishahel_pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medisahel_user -d medisahel_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - medishahel_net
 
-  # 2. Complete Node.js Application
+  # 2. Main Full-stack MEDISHALEL application container
   medishahel-app:
     build:
       context: .
@@ -25,17 +30,21 @@ services:
     container_name: medishahel_app
     restart: always
     environment:
-      - DATABASE_URL=postgresql://medishahel_admin:LocalSecurePassword2026!@postgres-db:5432/medishahel_prod?schema=public
+      - DATABASE_URL=postgresql://medisahel_user:MotDePasseFort@postgres:5432/medisahel_db?schema=public
+      - JWT_SECRET=60391abf83eead1cda5cf0fbdc5a14dcdc6179af7ef1bfca928238ba4fbac8fdbca38cd3d8a9e16ca1f9a1cbda27a9ae1b621e8ac8ffda3cfcf72fa82136e1f0
       - NODE_ENV=production
       - PORT=3000
     depends_on:
-      - postgres-db
+      postgres:
+        condition: service_healthy
     ports:
       - "3000:3000"
+    volumes:
+      - medishahel_filedata:/app/data
     networks:
       - medishahel_net
 
-  # 3. Local Nginx Reverse Proxy for caching, SSL termination, and router rules
+  # 3. High Performance nginx load balancer and reverse proxy
   nginx-proxy:
     image: nginx:alpine
     container_name: medishahel_proxy
@@ -51,7 +60,9 @@ services:
       - medishahel_net
 
 volumes:
-  pgdata:
+  medishahel_pgdata:
+    driver: local
+  medishahel_filedata:
     driver: local
 
 networks:

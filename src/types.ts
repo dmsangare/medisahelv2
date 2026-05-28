@@ -16,6 +16,8 @@ export interface UserAccount {
   name: string;
   role: UserRole;
   isActive: boolean;
+  username?: string;
+  password?: string;
   avatarUrl?: string;
   // Advanced RBAC Extensions according to Specifications
   allowedModules?: string[];     // e.g. ["patients", "dme", "billing"]
@@ -102,6 +104,7 @@ export interface BedAllocation {
   temperature?: number;
   frequenceCardiaque?: number;
   soinsInfirmiersLogs?: string[];
+  dateAdmission?: string;
 }
 
 export interface LabTest {
@@ -178,7 +181,7 @@ export interface MailRecord {
   objet: string;
   dateReceptionEnvoi: string;
   serviceAffecte: string;
-  statutTraitement: "En attente" | "Traité" | "Archivé";
+  statutTraitement: "En attente" | "En cours" | "Traité" | "Archivé";
 }
 
 export interface TriageRecord {

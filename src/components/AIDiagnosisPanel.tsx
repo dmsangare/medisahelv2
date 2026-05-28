@@ -50,9 +50,13 @@ export default function AIDiagnosisPanel({
     setResult(null);
 
     try {
+      const token = localStorage.getItem("medishahel_token");
       const resp = await fetch("/api/ai/diagnose", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           symptoms,
           history,

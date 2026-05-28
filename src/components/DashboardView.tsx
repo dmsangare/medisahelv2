@@ -43,7 +43,7 @@ export default function DashboardView({
   const totalPatientsCount = patientsList.length;
   
   const occupiedBeds = bedList.filter(b => b.statut === "Occupé");
-  const occupancyPercentage = Math.round((occupiedBeds.length / bedList.length) * 100);
+  const occupancyPercentage = bedList.length > 0 ? Math.round((occupiedBeds.length / bedList.length) * 100) : 0;
 
   const totalRevenue = invoiceList
     .filter(i => i.statut === "Payé")
