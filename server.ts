@@ -5,7 +5,6 @@ import fs from "fs";
 import crypto from "crypto";
 import { execSync } from "child_process";
 import { GoogleGenAI } from "@google/genai";
-import { createServer as createViteServer } from "vite";
 import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
@@ -2280,6 +2279,8 @@ app.post("/api/attachments/upload", requireAuth, async (req: any, res: any) => {
 // Start Express & Vite Services
 async function start() {
   if (process.env.NODE_ENV !== "production") {
+    const viteModule = "vite";
+    const { createServer: createViteServer } = await import(viteModule);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
