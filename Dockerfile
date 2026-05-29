@@ -4,9 +4,6 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Set environment to allow proper build hooks
-ENV NODE_ENV=production
-
 # Install build dependencies
 COPY package*.json ./
 RUN npm install
