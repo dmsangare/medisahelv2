@@ -44,6 +44,10 @@ ENV PORT=3000
 # Copy necessary manifests, ownership mapped to non-root 'node' user
 COPY --chown=node:node --from=builder /app/package*.json ./
 
+# Copy entrypoint.sh script and make it executable
+COPY --chown=node:node --from=builder /app/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 # Copy pre-compiled bundles in dist
 COPY --chown=node:node --from=builder /app/dist ./dist
 
@@ -59,5 +63,6 @@ USER node
 # Expose local network port 3000
 EXPOSE 3000
 
-# Start server
+# Configure entrypoint and runtime arguments
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["node", "dist/server.cjs"]
