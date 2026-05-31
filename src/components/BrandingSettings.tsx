@@ -29,7 +29,7 @@ export default function BrandingSettings({
   const [secondaryColor, setSecColor] = useState(initialBranding.secondaryColor);
   const [logoUrl, setLogoUrl] = useState(initialBranding.logoUrl || "");
   const [faviconUrl, setFaviconUrl] = useState(initialBranding.faviconUrl || "💉");
-  const [modules, setModules] = useState<Record<string, boolean>>(initialBranding.activeModules);
+  const [modules, setModules] = useState<Record<string, boolean>>(() => initialBranding.activeModules || {});
   const [activeSubTab, setActiveSubTab] = useState<"brand" | "modules" | "audit" | "users" | "maintenance" | "sessions" | "monitoring">("brand");
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export default function BrandingSettings({
 
   const fetchSecuritySettings = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token") || localStorage.getItem("medishahel_token");
       const res = await fetch("/api/system/settings", {
         headers: { "Authorization": `Bearer ${token}` }
       });
@@ -68,7 +68,7 @@ export default function BrandingSettings({
   const fetchActiveSessions = async () => {
     setSessionLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token") || localStorage.getItem("medishahel_token");
       const res = await fetch("/api/system/sessions", {
         headers: {
           "Authorization": `Bearer ${token}`
@@ -89,7 +89,7 @@ export default function BrandingSettings({
     const updated = { ...securitySettings, [field]: value };
     setSecuritySettings(updated);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token") || localStorage.getItem("medishahel_token");
       await fetch("/api/system/settings", {
         method: "POST",
         headers: {
@@ -106,7 +106,7 @@ export default function BrandingSettings({
   const handleRevokeSession = async (sessionId: string) => {
     if (!confirm("Voulez-vous forcer la déconnexion immédiate de cet utilisateur ? Sa session sera annulée pour de bon.")) return;
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token") || localStorage.getItem("medishahel_token");
       const res = await fetch(`/api/system/sessions/${sessionId}`, {
         method: "DELETE",
         headers: {
@@ -191,7 +191,7 @@ export default function BrandingSettings({
     setSecColor(initialBranding.secondaryColor);
     setLogoUrl(initialBranding.logoUrl || "");
     setFaviconUrl(initialBranding.faviconUrl || "💉");
-    setModules(initialBranding.activeModules);
+    setModules(initialBranding.activeModules || {});
   }, [initialBranding]);
 
   const handleToggleModule = (modKey: string) => {

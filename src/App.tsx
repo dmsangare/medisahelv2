@@ -93,8 +93,15 @@ import {
 export default function App() {
   // Zero-Trust Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem("medishahel_token"));
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem("token") || localStorage.getItem("medishahel_token"));
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    try {
+      const savedUser = localStorage.getItem("user");
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(true);
 
   // Offline State simulator
@@ -250,7 +257,9 @@ export default function App() {
   }, [isAuthenticated]);
 
   const handleLoginSuccess = (token: string, user: any) => {
+    localStorage.setItem("token", token);
     localStorage.setItem("medishahel_token", token);
+    localStorage.setItem("user", JSON.stringify(user));
     setAuthToken(token);
     setIsAuthenticated(true);
     setCurrentUser(user);
@@ -260,7 +269,9 @@ export default function App() {
   };
 
   const handleLogout = (message = "Déconnexion réussie : Session fermée.") => {
+    localStorage.removeItem("token");
     localStorage.removeItem("medishahel_token");
+    localStorage.removeItem("user");
     setAuthToken(null);
     setIsAuthenticated(false);
     setCurrentUser(null);
@@ -273,13 +284,22 @@ export default function App() {
     fetch("/api/clinics/brand")
       .then(r => r.json())
       .then(data => {
-        if (data && data.name) setClinicBrand(data);
+        if (data && data.name) {
+          setClinicBrand(prev => ({
+            ...prev,
+            ...data,
+            activeModules: {
+              ...(prev.activeModules || {}),
+              ...(data.activeModules || {})
+            }
+          }));
+        }
       })
       .catch(err => {
         console.log("Using offline default branding config.");
       });
 
-    const token = authToken || localStorage.getItem("medishahel_token");
+    const token = authToken || localStorage.getItem("token") || localStorage.getItem("medishahel_token");
     const headers = {
       "Content-Type": "application/json",
       ...(token ? { "Authorization": `Bearer ${token}` } : {})
