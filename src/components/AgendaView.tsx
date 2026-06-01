@@ -1,12 +1,12 @@
 import { useState, FormEvent } from "react";
 import { Appointment, Patient } from "../types";
-import { Calendar, Clock, PlusCircle, CheckCircle2, User, Home, AlertCircle, MessageSquare } from "lucide-react";
+import { Calendar, Clock, PlusCircle, CheckCircle2, User, Home, AlertCircle, MessageSquare, XCircle } from "lucide-react";
 
 interface AgendaViewProps {
   appointments: Appointment[];
   patients: Patient[];
   onAddAppointment: (data: Omit<Appointment, "id" | "createdAt">) => void;
-  onUpdateStatus: (id: string, newStatus: Appointment["statut"]) => void;
+  onUpdateAppointment: (id: string, updatedFields: Partial<Appointment>) => void;
   accentColor: string;
 }
 
@@ -14,11 +14,12 @@ export default function AgendaView({
   appointments,
   patients,
   onAddAppointment,
-  onUpdateStatus,
+  onUpdateAppointment,
   accentColor
 }: AgendaViewProps) {
   const [selectedMed, setSelectedMed] = useState<string>("Tous");
   const [showForm, setShowForm] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
 
   // Form states
   const [patId, setPatId] = useState("");
@@ -57,6 +58,10 @@ export default function AgendaView({
     "Sage-femme Fanta Diallo"
   ];
 
+  const hasConflict = (med: string, d: string, h: string) => {
+    return appointments.some(appt => appt.medecin === med && appt.date === d && appt.heure === h && appt.statut !== "Annulé");
+  };
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!patId) {
@@ -65,6 +70,12 @@ export default function AgendaView({
     }
     const pat = patients.find(p => p.id === patId);
     if (!pat) return;
+
+    if (hasConflict(medecin, date, heure)) {
+      if (!confirm(`Attention : Le Dr. ${medecin} a déjà un rendez-vous à la même heure (${heure}) le ${date}. Souhaitez-vous forcer l'enregistrement malgré le conflit d'horaire ?`)) {
+        return;
+      }
+    }
 
     onAddAppointment({
       patientId: patId,
@@ -83,6 +94,14 @@ export default function AgendaView({
   };
 
   const filteredAppts = appointments.filter(a => selectedMed === "Tous" || a.medecin === selectedMed);
+
+  const finalAppts = filteredAppts
+    .filter(a => {
+      if (!patientSearch) return true;
+      return a.patientNom.toLowerCase().includes(patientSearch.toLowerCase()) || 
+             a.patientId.toLowerCase().includes(patientSearch.toLowerCase());
+    })
+    .sort((a, b) => a.heure.localeCompare(b.heure)); // chronological sorting by default
 
   return (
     <div className="space-y-6" id="agenda-view-wrapper">
@@ -249,6 +268,15 @@ export default function AgendaView({
                 </div>
               </div>
 
+              {hasConflict(medecin, date, heure) && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-xl flex items-center gap-2 font-semibold">
+                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+                  <span>
+                    Attention : Conflit d'horaire. Le <strong>{medecin}</strong> a déjà une consultation de planifiée le {date} à {heure}.
+                  </span>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
@@ -270,16 +298,25 @@ export default function AgendaView({
 
           {/* List queue grid */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Session du jour : {date} ({filteredAppts.length} actes)</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b pb-3 font-semibold">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Session du jour : {date} ({finalAppts.length} actes)</h3>
+              <input
+                type="text"
+                placeholder="🔍 Rechercher par patient..."
+                className="text-xs p-1.5 px-3 border border-slate-300 rounded-lg max-w-xs font-medium outline-none focus:border-indigo-500"
+                value={patientSearch}
+                onChange={(e) => setPatientSearch(e.target.value)}
+              />
+            </div>
 
-            {filteredAppts.length === 0 ? (
+            {finalAppts.length === 0 ? (
               <div className="text-center py-12 text-slate-400">
                 <AlertCircle className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                 <p className="text-xs italic">Aucun acte médical planifié pour ce filtre.</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredAppts.map((appt, idx) => {
+                {finalAppts.map((appt, idx) => {
                   const stateStyles = 
                     appt.statut === "Confirmé" 
                       ? "bg-sky-50 text-sky-700 border-sky-200"
@@ -366,16 +403,22 @@ export default function AgendaView({
                       {/* Micro actions status changer */}
                       <div className="flex items-center gap-1.5 self-end md:self-center">
                         <button
-                          onClick={() => onUpdateStatus(appt.id, "Terminé")}
+                          onClick={() => onUpdateAppointment(appt.id, { statut: "Terminé" })}
                           className="p-1 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded border border-emerald-200 text-[10px] font-extrabold flex items-center gap-1 cursor-pointer transition-all"
                         >
                           <CheckCircle2 className="h-3 w-3" /> Terminer
                         </button>
                         <button
-                          onClick={() => onUpdateStatus(appt.id, "Reporté")}
+                          onClick={() => onUpdateAppointment(appt.id, { statut: "Reporté" })}
                           className="p-1 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-250 text-[10px] font-extrabold cursor-pointer transition-all"
                         >
                           Reporter
+                        </button>
+                        <button
+                          onClick={() => onUpdateAppointment(appt.id, { statut: "Annulé" })}
+                          className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded border border-rose-200 text-[10px] font-extrabold cursor-pointer transition-all flex items-center gap-1"
+                        >
+                          <XCircle className="h-3.5 w-3.5 text-rose-500" /> Annuler
                         </button>
                       </div>
                     </div>

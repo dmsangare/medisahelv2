@@ -1,210 +1,179 @@
-export type UserRole =
-  | "Médecin"
-  | "Infirmier"
-  | "Sage-femme"
-  | "Aide-soignant"
-  | "Laborantin"
-  | "Radiologue"
-  | "Pharmacien"
-  | "Réceptionniste"
-  | "Caissier"
-  | "DG"
-  | "Administrateur Système";
+export type Role = "ADMIN" | "DOCTOR" | "NURSE" | "CASHIER" | "PHARMACIST" | "LAB_TECH" | "HR";
 
-export interface UserAccount {
+export type HospitalizationStatus = "ADMITTED" | "DISCHARGED";
+
+export type TransactionStatus = "PAID" | "UNPAID" | "PARTIAL";
+
+export type TransactionType = "INVOICE" | "PAYMENT";
+
+export type LabStatus = "PENDING" | "COMPLETED";
+
+export type AttendanceStatus = "PRESENT" | "LATE" | "ABSENT";
+
+export type PayrollStatus = "PAID" | "PENDING";
+
+export type AppointmentStatus = "CONFIRMED" | "CANCELLED" | "COMPLETED";
+
+export interface Clinic {
   id: string;
   name: string;
-  role: UserRole;
-  isActive: boolean;
-  username?: string;
-  password?: string;
-  avatarUrl?: string;
-  // Advanced RBAC Extensions according to Specifications
-  allowedModules?: string[];     // e.g. ["patients", "dme", "billing"]
-  allowedActions?: string[];     // e.g. ["write", "delete", "prescribe", "validate"]
-  allowedSites?: string[];       // e.g. ["site-bamako", "site-mopti"]
-  allowedDepartments?: string[]; // e.g. ["Maternité", "Urgences", "Médecine Générale"]
-  allowedDataTypes?: string[];   // e.g. ["Dossiers médicaux chiffrés", "Données financières cliniques"]
-  allowedHoursStart?: string;    // e.g. "08:00"
-  allowedHoursEnd?: string;      // e.g. "18:00"
-  allowedIPs?: string;           // e.g. "192.168.1.*"
+  logoUrl?: string | null;
+  address?: string | null;
+  currency: string;
+  themeColor: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-export interface ClinicBranding {
+export interface User {
+  id: string;
+  email: string;
   name: string;
-  appName: string;
-  slogan: string;
-  primaryColor: string;
-  secondaryColor: string;
-  logoUrl?: string;
-  faviconUrl?: string;
-  activeModules: Record<string, boolean>;
+  role: Role;
+  mustChangePassword: boolean;
+  clinicId: string;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Patient {
-  id: string; // unique (e.g., MS-2026-0045)
-  nom: string;
-  prenom: string;
-  sexe: "M" | "F";
-  dateNaissance: string;
-  telephone: string;
-  adresse: string;
-  profession: string;
-  groupeSanguin: "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-" | "O+" | "O-";
-  allergies: string;
-  assurance: string; // ex: CANAM (70%), INPS, Aucun
-  photoPlaceholderCode?: string; // short prefix fallback
-  createdAt: string;
-  photoUrl?: string;
-  contactUrgenceNom?: string;
-  contactUrgenceTel?: string;
-  isArchive?: boolean;
-  nationalite?: string;
-  lieuNaissance?: string;
-  ethnie?: string;
-  antecedents?: string;
-}
-
-export interface Appointment {
   id: string;
-  patientId: string;
-  patientNom: string;
-  medecin: string; // target professional
-  date: string;
-  heure: string;
-  salle: string;
-  statut: "Confirmé" | "En attente" | "Reporté" | "Terminé";
-  notes?: string;
-  createdAt: string;
+  firstName: string;
+  lastName: string;
+  nationalId: string;
+  dateOfBirth: string;
+  gender: string;
+  phone?: string | null;
+  email?: string | null;
+  bloodType?: string | null;
+  allergies?: string | null;
+  address?: string | null;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MedicalRecord {
-  id: string; // e.g., consult_1
+  id: string;
   patientId: string;
+  doctorId: string;
+  doctorName: string;
+  symptoms: string;
+  diagnosis: string;
+  prescription: string;
+  notes?: string | null;
   date: string;
-  motif: string;
-  diagnostic: string; // summary text
-  codeCIM10: string; // CIM-10 classification code
-  prescription: string; // raw medication lines
-  examensDemandes: string[]; // references
-  certificatDuree?: number; // Repos médical en jours
-  notesCliniques: string;
-  medecinSignature: string;
-  piecesJointes?: string[];
-  createdAt: string;
+  createdAt?: string;
 }
 
-export interface BedAllocation {
-  id: string; // e.g., Lit-101
-  chambre: string; // e.g., Chambre A
-  service: string; // Maternité, Urgences, Médecine Générale
-  patientId?: string;
-  patientNom?: string;
-  statut: "Disponible" | "Occupé" | "Maintenance";
-  temperature?: number;
-  frequenceCardiaque?: number;
-  soinsInfirmiersLogs?: string[];
-  dateAdmission?: string;
+export interface Hospitalization {
+  id: string;
+  patientId: string;
+  bedNumber: string;
+  roomNumber: string;
+  admissionDate: string;
+  dischargeDate?: string | null;
+  reason: string;
+  status: HospitalizationStatus;
+  notes?: string | null;
+}
+
+export interface Transaction {
+  id: string;
+  patientId: string;
+  type: TransactionType;
+  description: string;
+  amount: number;
+  status: TransactionStatus;
+  cashierId: string;
+  cashierName: string;
+  date: string;
+  paymentMethod: string;
+  createdAt?: string;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  quantity: number;
+  threshold: number;
+  price: number;
+  expiryDate?: string | null;
+  status: string;
+  supplier?: string | null;
+  location?: string | null;
+  updatedAt?: string;
 }
 
 export interface LabTest {
   id: string;
   patientId: string;
-  patientNom: string;
-  typeExamen: "Hématologie" | "Biochimie" | "Sérologie" | "Bactériologie" | "Parasitologie";
-  nomAnalyse: string; // e.g. "Goutte Épaisse (GE)", "NFS", "Glycémie"
-  valeurReference: string;
-  resultatObtenu?: string;
-  dateDemande: string;
-  dateValidation?: string;
-  biologisteValidateur?: string;
-  statut: "Demandé" | "Validé" | "Urgent";
-  alertCritique?: boolean;
-}
-
-export interface MedicalImage {
-  id: string;
-  patientId: string;
-  patientNom: string;
-  typeImagerie: "Radiologie" | "Scanner" | "IRM" | "Échographie";
-  medecinPrescripteur: string;
-  status: "En attente" | "Traité";
-  imageSimulatedUrl?: string;
-  compteRendu?: string;
-  dateDemande: string;
-}
-
-export interface StockItem {
-  id: string;
-  designation: string;
-  categorie: string; // "Médicament", "Consommable", "Réactif"
-  quantite: number;
-  seuilAlerte: number;
-  numeroLot: string;
-  datePeremption: string;
-  fournisseur: string;
-}
-
-export interface Invoice {
-  id: string;
-  patientId: string;
-  patientNom: string;
-  designation: string;
-  montantTotal: number;
-  montantAssurance: number; // calculated according to CANAM, etc.
-  montantPatiente: number; // remaining to pay
-  statut: "Payé" | "Impayé" | "Avoir";
-  modePaiement?: "Espèces" | "Orange Money" | "Wave" | "Moov Money" | "Carte bancaire";
-  dateEmission: string;
-  datePaiement?: string;
-  caissier?: string;
-  isAvoir?: boolean;
-}
-
-export interface StaffPresence {
-  id: string;
-  staffId: string;
-  nomPrenom: string;
-  role: string;
+  testName: string;
+  category: string;
+  status: LabStatus;
+  results?: string | null;
+  requestedBy: string;
+  performedBy?: string | null;
   date: string;
-  heureArrivee: string;
-  heureDepart?: string;
-  statut: "Présent" | "Retard" | "Absent" | "Justifié";
-  justification?: string;
 }
 
-export interface MailRecord {
+export interface Attendance {
   id: string;
-  type: "Entrant" | "Sortant";
-  numeroCourrier: string; // Auto format: COU-2026-xxxx
-  expediteurDestinataire: string;
-  objet: string;
-  dateReceptionEnvoi: string;
-  serviceAffecte: string;
-  statutTraitement: "En attente" | "En cours" | "Traité" | "Archivé";
+  userId: string;
+  date: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  status: AttendanceStatus;
+  reason?: string | null;
 }
 
-export interface TriageRecord {
+export interface Payroll {
+  id: string;
+  userId: string;
+  month: number;
+  year: number;
+  baseSalary: number;
+  bonuses: number;
+  deductions: number;
+  netSalary: number;
+  status: PayrollStatus;
+  payDate?: string | null;
+}
+
+export interface Appointment {
   id: string;
   patientId: string;
-  patientNom: string;
-  couleur: "Rouge" | "Orange" | "Jaune" | "Vert"; // Rouge -> immédiat, Orange -> très urgent, Jaune -> urgent, Vert -> non urgent
-  plaintePrincipale: string;
-  tensionArterielle?: string;
-  frequenceCardiaque?: number;
-  temperature?: number;
-  heureArrivee: string;
-  statut: "En attente" | "En soins" | "Libéré";
+  doctorId: string;
+  doctorName: string;
+  date: string;
+  time: string;
+  status: AppointmentStatus;
+  notes?: string | null;
+}
+
+export interface Document {
+  id: string;
+  title: string;
+  description?: string | null;
+  fileUrl?: string | null;
+  fileType: string;
+  category: string;
+  ownerId: string;
+  ownerName: string;
+  size: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AuditLog {
   id: string;
-  timestamp: string;
-  user: string;
+  userId: string;
+  userName: string;
   role: string;
   action: string;
   details: string;
-  ip: string;
-  oldValue?: string;
-  newValue?: string;
+  timestamp: string;
 }

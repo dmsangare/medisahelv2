@@ -30,7 +30,11 @@ interface SpecializedModulesViewProps {
   triages: TriageRecord[];
   patients: Patient[];
   onValidateLab: (labId: string, result: string) => void;
+  onAddLabTest: (newTest: any) => void;
+  onAddMedicalImage: (newImage: any) => void;
+  onProcessMedicalImage: (imageId: string, compteRendu: string) => void;
   onDispenseMed: (medId: string, qty: number) => void;
+  onRegisterStockItem?: (item: StockItem) => void;
   onAddTriage: (newTriage: Omit<TriageRecord, "id" | "statut" | "heureArrivee">) => void;
   onClockIn: (staffName: string, role: string) => void;
   accentColor: string;
@@ -45,12 +49,16 @@ export default function SpecializedModulesView({
   triages,
   patients,
   onValidateLab,
+  onAddLabTest,
+  onAddMedicalImage,
+  onProcessMedicalImage,
   onDispenseMed,
+  onRegisterStockItem,
   onAddTriage,
   onClockIn,
   accentColor
 }: SpecializedModulesViewProps) {
-  const [activeTab, setActiveTab] = useState<"lab" | "pharmacy" | "hr" | "triage">("triage");
+  const [activeTab, setActiveTab] = useState<"lab" | "imagerie" | "pharmacy" | "hr" | "triage">("triage");
 
   // Local form states for triage admission
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -112,6 +120,86 @@ export default function SpecializedModulesView({
 
   // Lab results text
   const [labResults, setLabResults] = useState<Record<string, string>>({});
+
+  // New States for Lab Test Requests
+  const [showAddLabForm, setShowAddLabForm] = useState(false);
+  const [labPatientId, setLabPatientId] = useState("");
+  const [labTypeExamen, setLabTypeExamen] = useState<"Hématologie" | "Biochimie" | "Sérologie" | "Bactériologie" | "Parasitologie">("Biochimie");
+  const [labNomAnalyse, setLabNomAnalyse] = useState("");
+  const [labValeurReference, setLabValeurReference] = useState("");
+  const [labAlertCritique, setLabAlertCritique] = useState(false);
+
+  // New States for Imaging Requests
+  const [showAddImageForm, setShowAddImageForm] = useState(false);
+  const [imagePatientId, setImagePatientId] = useState("");
+  const [imageType, setImageType] = useState<"Radiologie" | "Scanner" | "IRM" | "Échographie">("Radiologie");
+  const [imagePrescripteur, setImagePrescripteur] = useState("");
+  
+  // Managing Radio reports/compte-rendu
+  const [activeImageId, setActiveImageId] = useState("");
+  const [compteRenduText, setCompteRenduText] = useState("");
+
+  const handleLabRequestSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!labPatientId || !labNomAnalyse) {
+      alert("Veuillez sélectionner un patient et saisir le nom de l'analyse.");
+      return;
+    }
+
+    const pat = patients.find(p => p.id === labPatientId);
+    if (!pat) return;
+
+    onAddLabTest({
+      patientId: labPatientId,
+      patientNom: `${pat.nom.toUpperCase()} ${pat.prenom}`,
+      typeExamen: labTypeExamen,
+      nomAnalyse: labNomAnalyse,
+      valeurReference: labValeurReference || "Norme standard clinique",
+      alertCritique: labAlertCritique
+    });
+
+    // Reset Form
+    setLabPatientId("");
+    setLabNomAnalyse("");
+    setLabValeurReference("");
+    setLabAlertCritique(false);
+    setShowAddLabForm(false);
+    alert("La demande d'analyse de biologie a été enregistrée avec succès.");
+  };
+
+  const handleImageRequestSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!imagePatientId || !imagePrescripteur) {
+      alert("Veuillez renseigner tous les champs obligatoires.");
+      return;
+    }
+
+    const pat = patients.find(p => p.id === imagePatientId);
+    if (!pat) return;
+
+    onAddMedicalImage({
+      patientId: imagePatientId,
+      patientNom: `${pat.nom.toUpperCase()} ${pat.prenom}`,
+      typeImagerie: imageType,
+      medecinPrescripteur: imagePrescripteur
+    });
+
+    // Reset Form
+    setImagePatientId("");
+    setImagePrescripteur("");
+    setShowAddImageForm(false);
+    alert("La prescription d'imagerie clinique a été enregistrée avec succès.");
+  };
+
+  const handleReportSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!activeImageId || !compteRenduText) return;
+
+    onProcessMedicalImage(activeImageId, compteRenduText);
+    setActiveImageId("");
+    setCompteRenduText("");
+    alert("Le compte-rendu radiologique a été signé et rattaché au dossier d'imagerie.");
+  };
 
   const handleTriageSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -211,6 +299,10 @@ export default function SpecializedModulesView({
     setCustomStocks(updated);
     localStorage.setItem("pharmacy_custom_stocks", JSON.stringify(updated));
 
+    if (onRegisterStockItem) {
+      onRegisterStockItem(newItem);
+    }
+
     // Reset Form
     setNewLotDesignation("");
     setNewLotQty(100);
@@ -278,7 +370,18 @@ export default function SpecializedModulesView({
           style={activeTab === "lab" ? { backgroundColor: accentColor } : {}}
         >
           <FlaskConical className="h-4 w-4" />
-          <span>Biologie & Imagerie Radiologique (P1)</span>
+          <span>Biologie (Laboratoire)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("imagerie")}
+          className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === "imagerie" ? "text-white shadow-xs" : "text-slate-600 hover:text-slate-850"
+          }`}
+          style={activeTab === "imagerie" ? { backgroundColor: accentColor } : {}}
+        >
+          <FileImage className="h-4 w-4" />
+          <span>Imagerie Médicale & Radio</span>
         </button>
 
         <button
@@ -475,37 +578,128 @@ export default function SpecializedModulesView({
         </div>
       ) : activeTab === "lab" ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Lab test validations */}
+          {/* Lab test validations & Creation */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-            <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <FlaskConical className="h-4 w-4 text-sky-600" /> Validation Biologie Médicale (Laboratoire)
-            </h3>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <FlaskConical className="h-4 w-4 text-sky-600" /> Validation Biologie Médicale (Laboratoire)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddLabForm(!showAddLabForm)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10.5px] font-bold p-1 px-2 rounded-lg flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <PlusCircle className="h-3.5 w-3.5 text-sky-655" />
+                <span>{showAddLabForm ? "Fermer" : "Prescrire Analyse"}</span>
+              </button>
+            </div>
 
-            <div className="space-y-3">
+            {showAddLabForm && (
+              <form onSubmit={handleLabRequestSubmit} className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 text-xs">
+                <h4 className="font-bold text-slate-700 text-[11px] uppercase tracking-wide">Nouvelle Demande d'Analyse (Biologique)</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Patient</label>
+                    <select
+                      required
+                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white font-medium"
+                      value={labPatientId}
+                      onChange={(e) => setLabPatientId(e.target.value)}
+                    >
+                      <option value="">-- Choisissez le patient --</option>
+                      {patients.map(p => (
+                        <option key={p.id} value={p.id}>{p.nom.toUpperCase()} {p.prenom} ({p.id})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Catégorie d'Examen</label>
+                    <select
+                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white font-medium"
+                      value={labTypeExamen}
+                      onChange={(e) => setLabTypeExamen(e.target.value as any)}
+                    >
+                      <option value="Hématologie">Hématologie (NFS, etc.)</option>
+                      <option value="Biochimie">Biochimie (Glycémie, Créat, etc.)</option>
+                      <option value="Sérologie">Sérologie (VIH, Widal, etc.)</option>
+                      <option value="Bactériologie">Bactériologie (ECBU, etc.)</option>
+                      <option value="Parasitologie">Parasitologie (GE, etc.)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Nom Précis de l'Analyse</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ex: Glycémie à jeun, Cholestérol total"
+                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white font-semibold"
+                      value={labNomAnalyse}
+                      onChange={(e) => setLabNomAnalyse(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Valeur de Référence Attendue</label>
+                    <input
+                      type="text"
+                      placeholder="ex: 0.70 - 1.10 g/L"
+                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white"
+                      value={labValeurReference}
+                      onChange={(e) => setLabValeurReference(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="lab-urgent"
+                    className="rounded text-sky-650 h-4 w-4 cursor-pointer"
+                    checked={labAlertCritique}
+                    onChange={(e) => setLabAlertCritique(e.target.checked)}
+                  />
+                  <label htmlFor="lab-urgent" className="text-[10px] font-bold text-rose-700 cursor-pointer">
+                    ⚠️ Marquer cette analyse comme URGENTE (Prioritaire)
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs py-1.5 px-3.5 rounded transition-all cursor-pointer shadow-xs"
+                >
+                  Envoyer au Laborantin
+                </button>
+              </form>
+            )}
+
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
               {labTests.map(lt => {
                 const isVal = lt.statut === "Validé";
                 return (
-                  <div key={lt.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2">
+                  <div key={lt.id} className="p-3.5 bg-slate-50 border border-slate-205 rounded-lg text-xs space-y-2">
                     <div className="flex items-center justify-between text-[10px] border-b border-slate-200/50 pb-1 text-slate-400 font-mono">
                       <span>Réf: #{lt.id} ({lt.typeExamen})</span>
-                      <span className={isVal ? "text-emerald-600 font-bold" : "text-orange-600 font-bold animate-pulse"}>
-                        {lt.statut}
+                      <span className={isVal ? "text-emerald-600 font-bold" : lt.statut === "Urgent" || lt.alertCritique ? "text-rose-600 font-extrabold animate-pulse font-sans flex items-center gap-1 bg-rose-50 px-1.5 py-0.2 rounded" : "text-amber-600 font-bold animate-pulse"}>
+                        {lt.statut} {lt.alertCritique && "(URGENT)"}
                       </span>
                     </div>
 
                     <div className="flex justify-between transition-all">
                       <div>
                         <h4 className="font-bold text-slate-950 text-xs">{lt.patientNom}</h4>
-                        <p className="text-[11px] text-slate-700 font-semibold">Examen: <strong className="text-sky-700 font-bold">{lt.nomAnalyse}</strong></p>
+                        <p className="text-[11px] text-slate-755 font-semibold">Examen requis : <strong className="text-sky-700 font-extrabold">{lt.nomAnalyse}</strong></p>
+                        <span className="text-[10px] text-slate-450 font-medium font-mono">Norme: {lt.valeurReference || "Standard"}</span>
                       </div>
-                      <span className="text-[10px] font-semibold text-slate-400">Demande: {lt.dateDemande}</span>
+                      <span className="text-[10px] font-semibold text-slate-400">Prescrit: {lt.dateDemande}</span>
                     </div>
 
                     <div className="pt-2">
                       {isVal ? (
                         <div className="p-2 bg-emerald-50 text-emerald-800 rounded border border-emerald-150 font-mono text-[11px] flex items-center justify-between font-bold">
                           <span>Résultat: {lt.resultatObtenu}</span>
-                          <span className="text-[9px] text-slate-400 font-normal">Validé: {lt.biologisteValidateur}</span>
+                          <span className="text-[9px] text-slate-400 font-normal">Saisi: {lt.biologisteValidateur}</span>
                         </div>
                       ) : (
                         <div className="flex gap-2">
@@ -513,7 +707,7 @@ export default function SpecializedModulesView({
                             type="text"
                             placeholder="ex: TDR Positif (GE 440/µl)"
                             id={`lab-res-${lt.id}`}
-                            className="flex-1 text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded outline-none"
+                            className="flex-1 text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded outline-none font-bold"
                             value={labResults[lt.id] || ""}
                             onChange={(e) => setLabResults(p => ({ ...p, [lt.id]: e.target.value }))}
                           />
@@ -523,7 +717,7 @@ export default function SpecializedModulesView({
                             }}
                             className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-[10px] px-3 py-1.5 rounded cursor-pointer transition-all"
                           >
-                            Valider
+                            Valider Résultat
                           </button>
                         </div>
                       )}
@@ -546,56 +740,228 @@ export default function SpecializedModulesView({
                 <div className="p-2 bg-slate-50 border border-slate-200 rounded space-y-1">
                   <span className="font-bold text-slate-700 block">🧪 Glycémie à jeun</span>
                   <p className="text-slate-500">Norme : 0.70 - 1.10 g/L</p>
-                  <span className="text-[9px] text-amber-600 font-bold block">Hyper : &gt; 1.26 g/L</span>
-                  <span className="text-[9px] text-red-600 font-bold block">Hypo : &lt; 0.60 g/L</span>
+                  <span className="text-[10px] text-amber-600 font-bold block">Hyper : &gt; 1.26 g/L</span>
+                  <span className="text-[10px] text-red-600 font-bold block">Hypo : &lt; 0.60 g/L</span>
                 </div>
                 <div className="p-2 bg-slate-50 border border-slate-200 rounded space-y-1">
                   <span className="font-bold text-slate-700 block">🦟 TDR / Goutte Épaisse</span>
                   <p className="text-slate-600 font-sans">Paludisme : <strong className="text-emerald-700">Négatif</strong></p>
-                  <span className="text-[9px] text-red-650 font-bold block">Alerte : Positif (CTA requis)</span>
+                  <span className="text-[10px] text-red-650 font-bold block">Alerte : Positif (CTA requis)</span>
                 </div>
                 <div className="p-2 bg-slate-50 border border-slate-200 rounded space-y-1">
                   <span className="font-bold text-slate-700 block">💧 Créatininémie</span>
                   <p className="text-slate-500">H : 7 - 13 mg/L</p>
                   <p className="text-slate-500">F : 5 - 11 mg/L</p>
-                  <span className="text-[9px] text-red-700 font-bold block">Alerte : &gt; 15 mg/L (Insuff.)</span>
+                  <span className="text-[10px] text-red-700 font-bold block">Alerte : &gt; 15 mg/L (Insuff.)</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Imaging logs */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-            <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <FileImage className="h-4 w-4 text-sky-600" /> Imagerie Médicale (DICOM & Radiologie)
-            </h3>
+          {/* Quick Stats Panel for Lab */}
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+              <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider mb-3">Statistiques de Charge du Laboratoire</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-indigo-50 border border-indigo-100">
+                  <span className="text-[10px] font-bold text-indigo-500 uppercase">Analyses en suspens</span>
+                  <div className="text-2xl font-black text-indigo-900 mt-1">
+                    {labTests.filter(lt => lt.statut !== "Validé").length}
+                  </div>
+                </div>
+                <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-100">
+                  <span className="text-[10px] font-bold text-emerald-500 uppercase">Analyses signées</span>
+                  <div className="text-2xl font-black text-emerald-900 mt-1">
+                    {labTests.filter(lt => lt.statut === "Validé").length}
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            <div className="space-y-3">
+            <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-250 text-slate-800 text-xs">
+              <span className="font-bold block text-yellow-800 uppercase text-[10.5px] mb-1">📢 Vigilance Épidémiologique SNIS Mali</span>
+              <p className="text-slate-600 font-medium">Tout résultat biologique positif pour le Paludisme, Choléra, Rougeole ou Fièvre Typhoïde fait obligatoirement l'objet d'un rapport automatique transmis à la direction régionale de la santé de Bamako.</p>
+            </div>
+          </div>
+        </div>
+      ) : activeTab === "imagerie" ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Medical imaging logs and composer */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <FileImage className="h-4 w-4 text-sky-600" /> Imagerie Médicale & Radiographie (PACS)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddImageForm(!showAddImageForm)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10.5px] font-bold p-1 px-2 rounded-lg flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <PlusCircle className="h-3.5 w-3.5 text-sky-655" />
+                <span>{showAddImageForm ? "Fermer" : "Prescrire Cliché"}</span>
+              </button>
+            </div>
+
+            {showAddImageForm && (
+              <form onSubmit={handleImageRequestSubmit} className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 text-xs">
+                <h4 className="font-bold text-slate-700 text-[11px] uppercase tracking-wide">Nouvelle prescription d'imagerie clinique</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Patient concerné</label>
+                    <select
+                      required
+                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white font-medium"
+                      value={imagePatientId}
+                      onChange={(e) => setImagePatientId(e.target.value)}
+                    >
+                      <option value="">-- Choisissez le patient --</option>
+                      {patients.map(p => (
+                        <option key={p.id} value={p.id}>{p.nom.toUpperCase()} {p.prenom} ({p.id})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Type d'examen d'imagerie</label>
+                    <select
+                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white font-medium"
+                      value={imageType}
+                      onChange={(e) => setImageType(e.target.value as any)}
+                    >
+                      <option value="Radiologie">Radiologie (Poumon, Membres, etc.)</option>
+                      <option value="Scanner">Scanner hélicoïdal</option>
+                      <option value="IRM">IRM cérébrale / abdominale</option>
+                      <option value="Échographie">Échographie pelvienne / obstétricale</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Médecin prescripteur</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Nom du médecin (ex: Dr. Sangaré)"
+                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white font-semibold text-slate-800"
+                      value={imagePrescripteur}
+                      onChange={(e) => setImagePrescripteur(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs py-1.5 px-3.5 rounded transition-all cursor-pointer shadow-xs"
+                >
+                  Envoyer au service de Radiologie
+                </button>
+              </form>
+            )}
+
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
               {images.map(img => (
                 <div key={img.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2">
                   <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
                     <span>{img.typeImagerie} | Réf: {img.id}</span>
-                    <span className={img.status === "Traité" ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>
+                    <span className={img.status === "Traité" ? "text-emerald-700 font-extrabold" : "text-amber-600 font-bold animate-pulse"}>
                       {img.status}
                     </span>
                   </div>
 
                   <div>
                     <h4 className="font-bold text-slate-900">{img.patientNom}</h4>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">Prescrit par: {img.medecinPrescripteur}</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Prescrit par : <strong className="text-slate-650">{img.medecinPrescripteur}</strong> | Demande : {img.dateDemande}</span>
                   </div>
 
                   {img.compteRendu ? (
-                    <p className="p-2 bg-white rounded border border-slate-200 text-[10px] italic text-slate-600 leading-relaxed font-semibold">
-                      Compte rendu : {img.compteRendu}
-                    </p>
+                    <div className="p-2.5 bg-white rounded border border-slate-200 space-y-1.5">
+                      <p className="text-[10.5px] italic text-slate-650 leading-relaxed font-semibold">
+                        Compte rendu signé : {img.compteRendu}
+                      </p>
+                      <div className="flex gap-2">
+                        {/* Simulation viewer */}
+                        <div className="border border-slate-200 rounded p-1.5 bg-slate-50 text-[10px] font-mono flex items-center gap-1 text-slate-500 font-semibold cursor-pointer hover:bg-slate-100">
+                          <span>🎥 Cliché_PACS_V3.DCM</span>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="p-3.5 bg-slate-200/50 rounded text-center text-slate-400 font-semibold italic text-[11px] select-none border border-slate-250">
-                      Radiologue requis (Cliché en attente de numérisation...)
+                    <div className="space-y-2">
+                      <div className="p-3 bg-slate-200/50 rounded text-center text-slate-500 font-semibold italic text-[10.5px] select-none border border-slate-220">
+                        Radiographie en attente d'acquisition imageur...
+                      </div>
+
+                      {activeImageId === img.id ? (
+                        <form onSubmit={handleReportSubmit} className="p-3 bg-white hover:bg-slate-50/50 rounded border border-slate-200 space-y-2">
+                          <label className="block text-[10px] font-extrabold text-sky-700">RÉACTION ET COMPTE-RENDU RADIOLOGUE</label>
+                          <textarea
+                            required
+                            placeholder="Saisissez vos observations radiographiques cliniques complètes..."
+                            rows={3}
+                            className="w-full text-xs rounded border border-slate-300 p-1.5 outline-none font-sans font-semibold"
+                            value={compteRenduText}
+                            onChange={(e) => setCompteRenduText(e.target.value)}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10.5px] p-1 px-3 rounded cursor-pointer transition-all"
+                            >
+                              Confirmer & Signer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveImageId("");
+                                setCompteRenduText("");
+                              }}
+                              className="text-slate-500 font-bold text-[10px] hover:text-slate-750"
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setActiveImageId(img.id);
+                            setCompteRenduText("");
+                          }}
+                          className="bg-sky-655 hover:bg-sky-700 text-slate-800 text-[10px] border border-slate-300 bg-white hover:text-sky-800 font-bold p-1 px-3 rounded cursor-pointer flex items-center gap-1.5 transition-all shadow-2xs"
+                        >
+                          🖊️ Rédiger Compte-rendu d'Imagerie
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* PACS simulator drag box */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+            <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span>🩺 Station de Recalage DICOM & Simulation Clichés</span>
+            </h3>
+            <p className="text-[11px] text-slate-500 font-medium">Pour simuler l'importation de radiographies depuis des appareils mobiles ou l'imageur PACS de la clinique de Bamako (Capteur osseux ou Échographe), glissez-déposez n'importe quel fichier ou cliquez ci-dessous :</p>
+            
+            <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 hover:border-sky-500 hover:bg-sky-50/20 text-center transition-all cursor-pointer select-none">
+              <div className="text-3xl">🩻</div>
+              <span className="block font-bold mt-2 text-xs text-slate-700">Sélectionner ou Charger un Fichier d'Imagerie</span>
+              <span className="text-[10px] text-slate-450 mt-1 block">Fichiers supportés : JPEG, PNG, PDF ou fichiers médicaux .DCM (DICOM chiffré)</span>
+              
+              <button
+                type="button"
+                onClick={() => alert("Simulation PACS : Liaison réseau établie avec l'imageur central. Les clichés d'évaluation ont été détectés.")}
+                className="mt-4 inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-205 border p-1 px-3 font-semibold text-slate-700 text-[10px] rounded transition-all"
+              >
+                Lancer détection automatique imageur
+              </button>
+            </div>
+
+            <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-200 text-slate-800 text-xs">
+              <span className="font-bold block text-blue-800 uppercase text-[10.5px] mb-1">💡 NOTE RADIOPROTECTION</span>
+              <p className="text-slate-650 font-medium">L'utilisation des générateurs d'imagerie et des rayons X est strictement soumise aux règles de radioprotection de l'ARS d'Afrique de l'Ouest. Merci d'inscrire l'exposition (DPS) sur la notice patient.</p>
             </div>
           </div>
         </div>

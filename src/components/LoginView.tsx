@@ -141,12 +141,15 @@ export default function LoginView({ onLoginSuccess, clinicName, slogan, primaryC
         </div>
       </div>
 
-      {/* Mini Helper for Developer demo verification / testing */}
-      <div className="mt-6 text-center text-[10px] text-slate-500 space-y-1 bg-slate-800/60 p-3 rounded-xl border border-slate-700 max-w-md w-full font-mono">
-        <p className="font-bold text-slate-400">💡 Aide de connexion rapide V2 (Hashed & local) :</p>
-        <p>• Admin: <span className="text-slate-300">admin</span> / <span className="text-slate-300">AdminPassword2026!</span></p>
-        <p>• Dr. Sangaré: <span className="text-slate-300 font-semibold">dr_sangare</span> / <span className="text-slate-300">DoctorPassword2026!</span></p>
-        <p>• Caissier: <span className="text-slate-300 font-semibold">caiss_maiga</span> / <span className="text-slate-300">CashierPassword2026!</span></p>
+      {/* À propos de la solution */}
+      <div className="mt-6 text-center text-[10.5px] text-slate-400 space-y-1 bg-slate-800/80 p-5 rounded-2xl border border-slate-700/60 max-w-md w-full font-sans shadow-xl">
+        <p className="font-extrabold text-slate-200 tracking-wider text-[11px] uppercase">À propos de la solution</p>
+        <p className="font-semibold text-slate-300 mt-1">Adama SANGARÉ – Consultant & Formateur IT</p>
+        <p className="font-bold text-sky-400 uppercase tracking-wide text-[9.5px]">MICRO INFORMATIQUE & TÉLÉCOM</p>
+        <p className="text-slate-300 text-[11px] mt-1.5 font-medium">
+          Tél : <span className="font-bold text-emerald-400">+223 73 65 14 67</span> – Email : <a href="mailto:dmsangare@gmail.com" className="text-sky-450 underline font-semibold">dmsangare@gmail.com</a>
+        </p>
+        <p className="text-[9.5px] text-slate-400 pt-2 border-t border-slate-700/50 font-semibold">MédiSahel Clinique V2 – Système d’Information Sanitaire.</p>
       </div>
     </div>
   );

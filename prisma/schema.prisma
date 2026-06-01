@@ -4,300 +4,234 @@ datasource db {
 }
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
-// 1. Patient Directory
-model Patient {
-  id                 String               @id
-  nom                String
-  prenom             String
-  sexe               String
-  dateNaissance      DateTime
-  telephone          String
-  adresse            String
-  profession         String
-  groupeSanguin      String
-  allergies          String?
-  assurance          String               @default("Aucune") 
-  photoUrl           String?
-  contactUrgenceNom  String?
-  contactUrgenceTel  String?
-  isArchive          Boolean              @default(false)
-  nationalite        String?
-  lieuNaissance      String?
-  ethnie             String?
-  antecedents        String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  appointments       Appointment[]
-  hospitalizations   Hospitalization[]
-  labTests           LabTest[]
-  medicalRecords     MedicalRecord[]
-  invoices           Invoice[]
-  vitalSigns         VitalSigns[]
-  attachments        Attachment[]
+enum Role {
+  ADMIN
+  DOCTOR
+  NURSE
+  CASHIER
+  PHARMACIST
+  LAB_TECH
+  HR
 }
 
-// 2. Schedule Appointments
-model Appointment {
-  id         String   @id @default(uuid())
-  patientId  String
-  patient    Patient  @relation(fields: [patientId], references: [id])
-  medecin    String
-  date       String
-  heure      String
-  salle      String
-  statut     String   @default("Confirmé") // "Confirmé", "En attente", "Réalisé", "Annulé"
-  notes      String?
-  createdAt  DateTime @default(now())
+enum HospitalizationStatus {
+  ADMITTED
+  DISCHARGED
 }
 
-// 3. Complete Hospital Room Admissions
-model Hospitalization {
-  id                 String   @id @default(uuid())
-  patientId          String
-  patient            Patient  @relation(fields: [patientId], references: [id])
-  chambre            String
-  lit                String
-  service            String
-  dateEntree         DateTime @default(now())
-  dateSortie         DateTime?
-  statut             String   @default("Occupé") // "Occupé", "Sorti", "Maintenance"
-  temperature        Float?
-  frequenceCard      Int?
-  soinsInfirmiers    String[] @default([])
+enum TransactionStatus {
+  PAID
+  UNPAID
+  PARTIAL
 }
 
-// 4. Laboratory examinations
-model LabTest {
-  id                 String   @id @default(uuid())
-  patientId          String
-  patient            Patient  @relation(fields: [patientId], references: [id])
-  nomAnalyse         String
-  typeExamen         String
-  dateDemande        DateTime @default(now())
-  statut             String   @default("En attente") // "En attente", "Validé"
-  resultatObtenu     String?
-  biologisteValid    String?
-  valeurReference    String?  @default("")
-  alertCritique      Boolean  @default(false)
+enum TransactionType {
+  INVOICE
+  PAYMENT
 }
 
-// 5. Medical Records (DME)
-model MedicalRecord {
-  id                 String   @id @default(uuid())
-  patientId          String
-  patient            Patient  @relation(fields: [patientId], references: [id])
-  motif              String
-  diagnostic         String
-  codeCIM10          String
-  prescription       String
-  notesCliniques     String
-  pdfCertificatUrl   String?
-  certificatDuree    Int?
-  medecinSignature   String?
-  examensDemandes    String[] @default([])
-  createdAt          DateTime @default(now())
-  prescriptions      Prescription[]
-  attachments        Attachment[]
+enum LabStatus {
+  PENDING
+  COMPLETED
 }
 
-// 6. Pharmacy Stocks manager
-model StockItem {
-  id                 String   @id @default(uuid())
-  designation        String
-  categorie          String   @default("Médicament") // "Médicament", "Consommable", "Réactif"
-  numeroLot          String   @unique
-  quantite           Int
-  seuilAlerte        Int      @default(5)
-  datePeremption     DateTime
-  fournisseur        String
-  updatedAt          DateTime @updatedAt
-  dispensations      DrugDispensation[]
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
 }
 
-// 7. HR Presences
-model StaffPresence {
-  id                 String   @id @default(uuid())
-  staffId            String?  @default("staff_1")
-  nomPrenom          String
-  role               String
-  date               String
-  heureArrivee       String
-  heureDepart        String?
-  statut             String   @default("Présent") // "Présent", "Retard", "Absent"
+enum PayrollStatus {
+  PAID
+  PENDING
 }
 
-// 8. Audits logs (Immutable records)
-model AuditLog {
-  id                 String   @id @default(uuid())
-  timestamp          DateTime @default(now())
-  user               String
-  role               String
-  action             String
-  details            String
-  ip                 String
-  oldValue           String?  @default("")
-  newValue           String?  @default("")
+enum AppointmentStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
 }
 
-// 9. User Authentication accounts with active control and RBAC fields
+model Clinic {
+  id          String   @id @default(uuid())
+  name        String
+  logoUrl     String?
+  address     String?
+  currency    String   @default("FCFA")
+  themeColor  String   @default("#0f766e") // Default teal-700
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
 model User {
-  id                 String   @id @default(uuid())
-  username           String   @unique
+  id                 String       @id @default(uuid())
+  email              String       @unique
   passwordHash       String
-  salt               String   @default("")
   name               String
-  role               String
-  isActive           Boolean  @default(true)
-  allowedIPs         String?
-  allowedHoursStart  String?
-  allowedHoursEnd    String?
-  allowedModules     String[] @default([])
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  sessions           UserSession[]
+  role               Role         @default(DOCTOR)
+  mustChangePassword Boolean      @default(true)
+  clinicId           String
+  clinic             Clinic       @relation(fields: [clinicId], references: [id])
+  status             String       @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  attendances        Attendance[]
+  payrolls           Payroll[]
 }
 
-// 10. Financial Invoice System
-model Invoice {
-  id                 String   @id @default(uuid())
-  patientId          String
-  patient            Patient  @relation(fields: [patientId], references: [id])
-  patientNom         String
-  designation        String
-  montantTotal       Float
-  montantAssurance   Float
-  montantPatiente    Float
-  statut             String   @default("Impayé") // "Payé", "Impayé", "Avoir"
-  modePaiement       String?
-  dateEmission       DateTime @default(now())
-  datePaiement       DateTime?
-  caissier           String?
-  isAvoir            Boolean  @default(false)
-  payments           Payment[]
+model Patient {
+  id             String            @id @default(uuid())
+  firstName      String
+  lastName       String
+  nationalId     String            @unique
+  dateOfBirth    String
+  gender         String            @default("M") // M, F
+  phone          String?
+  email          String?
+  bloodType      String?
+  allergies      String?
+  address        String?
+  status         String            @default("ACTIVE") // ACTIVE, ARCHIVED
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  medicalRecords MedicalRecord[]
+  hospitalizations Hospitalization[]
+  transactions   Transaction[]
+  labTests       LabTest[]
+  appointments   Appointment[]
 }
 
-// 11. Individual Payment trace
-model Payment {
-  id                 String   @id @default(uuid())
-  invoiceId          String
-  invoice            Invoice  @relation(fields: [invoiceId], references: [id])
-  amount             Float
-  mode               String
-  date               DateTime @default(now())
-  caissier           String
+model MedicalRecord {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId     String
+  doctorName   String
+  symptoms     String
+  diagnosis    String
+  prescription String
+  notes        String?
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
 }
 
-// 12. Mailing Dispatch Registry
-model Mail {
-  id                 String   @id @default(uuid())
-  type               String // "Entrant", "Sortant"
-  numeroCourrier     String   @unique // Auto format: COU-2026-xxxx
-  expediteurDestinataire String
-  objet              String
-  dateReceptionEnvoi DateTime @default(now())
-  serviceAffecte     String
-  statutTraitement   String   @default("En attente") // "En attente", "En cours", "Traité", "Archivé"
+model Hospitalization {
+  id            String                @id @default(uuid())
+  patientId     String
+  patient       Patient               @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  bedNumber     String
+  roomNumber    String
+  admissionDate DateTime              @default(now())
+  dischargeDate DateTime?
+  reason        String
+  status        HospitalizationStatus @default(ADMITTED)
+  notes         String?
 }
 
-// 13. Insurances partners (Mutuelles)
-model Insurance {
-  id                 String   @id @default(uuid())
-  nom                String   @unique
-  taux               Int      // e.g. 70 for 70% coverage
-  description        String?
-  isActive           Boolean  @default(true)
+model Transaction {
+  id            String            @id @default(uuid())
+  patientId     String
+  patient       Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type          TransactionType   @default(INVOICE)
+  description   String
+  amount        Float
+  status        TransactionStatus @default(UNPAID)
+  cashierId     String
+  cashierName   String
+  date          DateTime          @default(now())
+  paymentMethod String            @default("CASH") // CASH, MOBILE_MONEY, CARD, INSURANCE
+  createdAt     DateTime          @default(now())
 }
 
-// 14. Notifications log
-model Notification {
-  id                 String   @id @default(uuid())
-  message            String
-  role               String?
-  userId             String?
-  isRead             Boolean  @default(false)
-  createdAt          DateTime @default(now())
+model InventoryItem {
+  id          String   @id @default(uuid())
+  name        String
+  sku         String   @unique
+  category    String   @default("MEDICINE") // MEDICINE, CONSUMABLE, EQUIPMENT
+  quantity    Int      @default(0)
+  threshold   Int      @default(10) // Alert when under this quantity
+  price       Float
+  expiryDate  String?
+  status      String   @default("IN_STOCK") // IN_STOCK, OUT_OF_STOCK, EXPIRED
+  supplier    String?
+  location    String?
+  updatedAt   DateTime @updatedAt
 }
 
-// 15. User session tracker
-model UserSession {
-  id                 String   @id @default(uuid())
-  userId             String
-  user               User     @relation(fields: [userId], references: [id])
-  token              String   @unique
-  ipAddress          String
-  loginTime          DateTime @default(now())
-  lastSeen           DateTime @updatedAt
-  isActive           Boolean  @default(true)
+model LabTest {
+  id          String    @id @default(uuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  testName    String
+  category    String    @default("BLOOD") // BLOOD, URINE, IMAGING, OTHER
+  status      LabStatus @default(PENDING)
+  results     String?
+  requestedBy String
+  performedBy String?
+  date        DateTime  @default(now())
 }
 
-// 16. Persistent system branding and metadata config
-model SystemSettings {
-  id                 String   @id @default(uuid())
-  name               String   @unique @default("Medishahel Settings")
-  valueJson          String   // Stringified JSON payload structure
+model Attendance {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String // YYYY-MM-DD
+  checkIn   String? // HH:MM
+  checkOut  String? // HH:MM
+  status    AttendanceStatus @default(PRESENT)
+  reason    String?
 }
 
-// 17. Real-time clinic Bed allocations
-model BedManagement {
-  id                 String   @id @default(uuid())
-  bedCode            String   @unique
-  chambre            String
-  service            String
-  patientId          String?
-  patientNom         String?
-  statut             String   @default("Disponible") // "Disponible", "Occupé", "Maintenance"
-  temperature        Float?
-  frequenceCard      Int?
-  soinsLogs          String[] @default([])
+model Payroll {
+  id         String        @id @default(uuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month      Int
+  year       Int
+  baseSalary Float
+  bonuses    Float         @default(0)
+  deductions Float         @default(0)
+  netSalary  Float
+  status     PayrollStatus @default(PENDING)
+  payDate    DateTime?
 }
 
-// 18. Details of Drug dispenses inside pharmacy
-model DrugDispensation {
-  id                 String   @id @default(uuid())
-  stockItemId        String
-  stockItem          StockItem @relation(fields: [stockItemId], references: [id])
-  patientNom         String
-  quantite           Int
-  dispensateur       String
-  dateDispensation   DateTime @default(now())
+model Appointment {
+  id        String            @id @default(uuid())
+  patientId String
+  patient   Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId  String
+  doctorName String
+  date      String // YYYY-MM-DD
+  time      String // HH:MM
+  status    AppointmentStatus @default(CONFIRMED)
+  notes     String?
 }
 
-// 19. Itemized recipe prescriptions
-model Prescription {
-  id                 String   @id @default(uuid())
-  medicalRecordId    String
-  medicalRecord      MedicalRecord @relation(fields: [medicalRecordId], references: [id])
-  designation        String
-  posologie          String
-  duree              String
+model Document {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  fileUrl     String?  // Can pack base64-ish mocks or paths
+  fileType    String   @default("PDF") // PDF, DOCX, JPG
+  category    String   @default("INCOMING") // INCOMING, OUTGOING, MEDICAL, ADMINISTRATIVE
+  ownerId     String
+  ownerName   String
+  size        String   @default("0 KB")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-// 20. Constant Patients diagnostics
-model VitalSigns {
-  id                 String   @id @default(uuid())
-  patientId          String
-  patient            Patient  @relation(fields: [patientId], references: [id])
-  source             String // "Triage", "Hospitalisation", "Consultation"
-  temperature        Float?
-  tension            String?
-  frequenceCardiaque Int?
-  poids              Float?
-  spo2               Int?
-  datePrise          DateTime @default(now())
-}
-
-// 21. Medical records pieces jointes
-model Attachment {
-  id                 String   @id @default(uuid())
-  label              String
-  url                String
-  patientId          String?
-  patient            Patient? @relation(fields: [patientId], references: [id])
-  recordId           String?
-  record             MedicalRecord? @relation(fields: [recordId], references: [id])
-  createdAt          DateTime @default(now())
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  userName  String
+  role      String
+  action    String
+  details   String
+  timestamp DateTime @default(now())
 }

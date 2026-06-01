@@ -29,6 +29,7 @@ export default function BrandingSettings({
   const [secondaryColor, setSecColor] = useState(initialBranding.secondaryColor);
   const [logoUrl, setLogoUrl] = useState(initialBranding.logoUrl || "");
   const [faviconUrl, setFaviconUrl] = useState(initialBranding.faviconUrl || "💉");
+  const [signatoryGecd, setSignatoryGecd] = useState(initialBranding.signatoryGecd || "Dr. Adama Sangaré");
   const [modules, setModules] = useState<Record<string, boolean>>(() => initialBranding.activeModules || {});
   const [activeSubTab, setActiveSubTab] = useState<"brand" | "modules" | "audit" | "users" | "maintenance" | "sessions" | "monitoring">("brand");
   const [isSaving, setIsSaving] = useState(false);
@@ -191,6 +192,7 @@ export default function BrandingSettings({
     setSecColor(initialBranding.secondaryColor);
     setLogoUrl(initialBranding.logoUrl || "");
     setFaviconUrl(initialBranding.faviconUrl || "💉");
+    setSignatoryGecd(initialBranding.signatoryGecd || "Dr. Adama Sangaré");
     setModules(initialBranding.activeModules || {});
   }, [initialBranding]);
 
@@ -213,7 +215,8 @@ export default function BrandingSettings({
         secondaryColor,
         logoUrl,
         faviconUrl,
-        activeModules: modules
+        activeModules: modules,
+        signatoryGecd
       });
       setMessage("Configuration de l'établissement sauvegardée et synchronisée avec succès.");
       onRefreshLogs();
@@ -436,6 +439,17 @@ export default function BrandingSettings({
                   className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none"
                   value={slogan}
                   onChange={(e) => setSlogan(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Signataire par défaut du Registre GECD</label>
+                <input
+                  type="text"
+                  className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none font-semibold text-slate-800"
+                  value={signatoryGecd}
+                  onChange={(e) => setSignatoryGecd(e.target.value)}
+                  placeholder="ex: Dr. Adama Sangaré, Médecin Chef"
                 />
               </div>
 
