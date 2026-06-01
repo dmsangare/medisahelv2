@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import bcrypt from "bcryptjs";
-import { createServer as createViteServer } from "vite";
 import { db } from "./server/db.ts";
 import { generateToken, verifyToken } from "./server/auth.ts";
 
@@ -529,6 +528,7 @@ app.get("/api/auditlogs", authenticate, async (req: any, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
