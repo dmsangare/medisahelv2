@@ -111,14 +111,52 @@ app.post("/api/auth/change-password", authenticate, async (req: any, res) => {
       details: "Mise à jour obligatoire du mot de passe à la première connexion effectuée."
     });
 
-    res.json({ success: true, message: "Mot de passe mis à jour avec succès" });
+    const newToken = generateToken({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      mustChangePassword: false,
+      clinicId: user.clinicId,
+    });
+
+    res.json({ 
+      success: true, 
+      message: "Mot de passe mis à jour avec succès",
+      token: newToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        mustChangePassword: false,
+        clinicId: user.clinicId,
+      }
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get("/api/auth/me", authenticate, async (req: any, res) => {
-  res.json({ user: req.user });
+  try {
+    const user = await db.users.findUnique(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur non trouvé" });
+    }
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword,
+        clinicId: user.clinicId,
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ================= CLINICS BRANDING ENDPOINTS =================

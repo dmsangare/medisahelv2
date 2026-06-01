@@ -3,7 +3,7 @@ import { KeyRound, ShieldAlert, Check } from "lucide-react";
 
 interface ChangePasswordModalProps {
   token: string | null;
-  onSuccess: () => void;
+  onSuccess: (newToken: string, updatedUser: any) => void;
 }
 
 export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ token, onSuccess }) => {
@@ -53,7 +53,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ token,
 
       setSuccess("Mot de passe mis à jour avec archivage immédiat de la traçabilité. Redirection...");
       setTimeout(() => {
-        onSuccess();
+        onSuccess(data.token, data.user);
       }, 1500);
     } catch (err: any) {
       setError(err.message);

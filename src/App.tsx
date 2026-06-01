@@ -132,11 +132,10 @@ export default function App() {
     setActiveTab("patients");
   };
 
-  const handlePasswordChanged = () => {
-    // Reload session, this will fetch mustChangePassword as false
-    if (token) {
-      fetchSession(token);
-    }
+  const handlePasswordChanged = (newToken: string, updatedUser: any) => {
+    localStorage.setItem("medisahel_token", newToken);
+    setToken(newToken);
+    setCurrentUser(updatedUser);
   };
 
   // Safe callback when clinical branding gets modified in parameters

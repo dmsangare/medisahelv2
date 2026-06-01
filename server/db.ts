@@ -477,6 +477,11 @@ export const db = {
       if (useBackupMemory) return memoryDb.users.map(({ passwordHash, ...u }) => u);
       return getPrisma().user.findMany({ select: { id: true, email: true, name: true, role: true, mustChangePassword: true, clinicId: true, status: true, createdAt: true } });
     },
+    async findUnique(id: string) {
+      await db.testConnection();
+      if (useBackupMemory) return memoryDb.users.find(u => u.id === id) || null;
+      return getPrisma().user.findUnique({ where: { id } });
+    },
     async findByEmail(email: string) {
       await db.testConnection();
       if (useBackupMemory) return memoryDb.users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
