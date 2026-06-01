@@ -21,5 +21,28 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src", "server.ts"]
+  "include": [
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/types.ts",
+    "src/index.css",
+    "server.ts",
+    "src/components/Header.tsx",
+    "src/components/PatientManager.tsx",
+    "src/components/MedicalRecordsDME.tsx",
+    "src/components/HospitalizationTracker.tsx",
+    "src/components/BillingsAndCashier.tsx",
+    "src/components/PharmacyStock.tsx",
+    "src/components/LabStation.tsx",
+    "src/components/HRRoster.tsx",
+    "src/components/AppointmentsCalendar.tsx",
+    "src/components/DocumentManager.tsx",
+    "src/components/AuditTrail.tsx",
+    "src/components/ClinicBranding.tsx",
+    "src/components/UserCredentials.tsx",
+    "src/components/ChangePasswordModal.tsx",
+    "src/components/ResetPasswordView.tsx",
+    "server/auth.ts",
+    "server/db.ts"
+  ]
 }

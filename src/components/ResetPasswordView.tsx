@@ -58,7 +58,9 @@ export default function ResetPasswordView({
 
       setSuccess(true);
       setTimeout(() => {
-        onPasswordChanged(newPassword);
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.href = "/login";
       }, 2000);
     } catch (err: any) {
       setError(err.message);
