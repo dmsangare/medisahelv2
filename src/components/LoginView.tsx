@@ -144,10 +144,11 @@ export default function LoginView({ onLoginSuccess, clinicName, slogan, primaryC
       {/* À propos de la solution */}
       <div className="mt-6 text-center text-[10.5px] text-slate-400 space-y-1 bg-slate-800/80 p-5 rounded-2xl border border-slate-700/60 max-w-md w-full font-sans shadow-xl">
         <p className="font-extrabold text-slate-200 tracking-wider text-[11px] uppercase">À propos de la solution</p>
-        <p className="font-semibold text-slate-300 mt-1">Adama SANGARÉ – Consultant & Formateur IT</p>
-        <p className="font-bold text-sky-400 uppercase tracking-wide text-[9.5px]">MICRO INFORMATIQUE & TÉLÉCOM</p>
+        <p className="font-semibold text-slate-300 mt-1">Adama SANGARÉ</p>
+        <p className="text-slate-300 font-medium">Consultant en Solutions Numériques et Formateur Support IT</p>
+        <p className="font-bold text-sky-400 uppercase tracking-wide text-[9.5px]">MIT – Micro Informatique & Télécom</p>
         <p className="text-slate-300 text-[11px] mt-1.5 font-medium">
-          Tél : <span className="font-bold text-emerald-400">+223 73 65 14 67</span> – Email : <a href="mailto:dmsangare@gmail.com" className="text-sky-450 underline font-semibold">dmsangare@gmail.com</a>
+          Téléphone / WhatsApp : <span className="font-bold text-emerald-400">+223 73 65 14 67</span>
         </p>
         <p className="text-[9.5px] text-slate-400 pt-2 border-t border-slate-700/50 font-semibold">MédiSahel Clinique V2 – Système d’Information Sanitaire.</p>
       </div>

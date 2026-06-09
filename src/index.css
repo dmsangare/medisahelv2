@@ -9,6 +9,8 @@
 @layer base {
   body {
     font-family: var(--font-sans);
+    background-color: #f8fafc;
+    transition: background-color 0.2s ease, color 0.15s ease;
   }
 }
 
@@ -26,4 +28,118 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Premium enterprise shadow specified in design system */
+.shadow-enterprise {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+/* 
+   ==========================================================================
+   DARK MODE ENTERPRISE OVERRIDES
+   Injects high-contrast, eye-healthy clinical slate across the entire platform
+   ==========================================================================
+*/
+.dark {
+  background-color: #030712 !important;
+  color: #f8fafc !important;
+}
+
+html.dark body {
+  background-color: #030712 !important;
+  color: #f8fafc !important;
+}
+
+/* Override standard components to sleek dark mode cards */
+html.dark .bg-white {
+  background-color: #0c111d !important; /* Dark slate */
+  color: #f8fafc !important;
+  border-color: #1f2937 !important;
+}
+
+html.dark .text-gray-900, 
+html.dark .text-slate-900, 
+html.dark .text-slate-850, 
+html.dark .text-slate-800, 
+html.dark .text-teal-950,
+html.dark .text-slate-950 {
+  color: #f3f4f6 !important;
+}
+
+html.dark .text-gray-500, 
+html.dark .text-slate-500, 
+html.dark .text-slate-400 {
+  color: #9ca3af !important;
+}
+
+html.dark .text-gray-650, 
+html.dark .text-slate-600 {
+  color: #d1d5db !important;
+}
+
+html.dark .border-gray-200, 
+html.dark .border-gray-150, 
+html.dark .border-slate-200, 
+html.dark .border-slate-150,
+html.dark .border-slate-100 {
+  border-color: #1f2937 !important;
+}
+
+html.dark .bg-slate-50, 
+html.dark .bg-gray-50,
+html.dark .bg-slate-100/50,
+html.dark .bg-slate-50/20,
+html.dark .bg-slate-50/50 {
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+}
+
+/* Forms controls in dark mode */
+html.dark input, 
+html.dark select, 
+html.dark textarea {
+  background-color: #030712 !important;
+  color: #ffffff !important;
+  border-color: #374151 !important;
+}
+
+html.dark input:focus, 
+html.dark select:focus, 
+html.dark textarea:focus {
+  border-color: #14b8a6 !important;
+}
+
+/* Sidebar overrides */
+html.dark aside nav {
+  background-color: #0c111d !important;
+  border-color: #1f2937 !important;
+}
+
+/* Direct tables elements styling */
+html.dark table, 
+html.dark thead, 
+html.dark tbody, 
+html.dark tr, 
+html.dark th, 
+html.dark td {
+  background-color: transparent !important;
+  border-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+
+html.dark tr:hover {
+  background-color: #111827 !important;
+}
+
+/* Overriding specific custom headers/tabs */
+html.dark .bg-sky-50,
+html.dark .bg-teal-50/20,
+html.dark .bg-teal-50/40,
+html.dark .bg-emerald-50/40,
+html.dark .bg-amber-50/40,
+html.dark .bg-purple-50/40,
+html.dark .bg-indigo-50/40 {
+  background-color: #111827 !important;
+  color: #2dd4bf !important;
 }

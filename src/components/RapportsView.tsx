@@ -50,6 +50,19 @@ export default function RapportsView({
 }: RapportsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<"snis" | "fins" | "kpis">("snis");
 
+  // Dynamic demographics indicators
+  const ethnieStats = patients.reduce((acc: Record<string, number>, p) => {
+    const eth = p.ethnie || "Non renseignée";
+    acc[eth] = (acc[eth] || 0) + 1;
+    return acc;
+  }, {});
+
+  const nationaliteStats = patients.reduce((acc: Record<string, number>, p) => {
+    const nat = p.nationalite || "Non renseignée";
+    acc[nat] = (acc[nat] || 0) + 1;
+    return acc;
+  }, {});
+
   // Local helper for downloads
   const handleCSVExport = (filename: string, headers: string[], rows: any[][]) => {
     let content = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
@@ -579,6 +592,48 @@ export default function RapportsView({
                     Index de liquidation immédiate des fiches d'actes d'officines et de soins cliniques.
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
+            <div className="bg-white p-5 rounded-xl border border-slate-205 shadow-3xs space-y-4 text-xs font-semibold">
+              <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider border-b pb-2 flex items-center gap-1.5">
+                <BarChart2 className="h-4.5 w-4.5 text-teal-600" /> Répartition Ethnique des Patients
+              </h3>
+              <div className="max-h-60 overflow-y-auto text-xs space-y-2 pr-1">
+                {Object.entries(ethnieStats).map(([eth, count]) => {
+                  const percentage = ((count / (patients.length || 1)) * 100).toFixed(1);
+                  return (
+                    <div key={eth} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg border border-slate-100 bg-white shadow-3xs">
+                      <span className="font-medium text-slate-700">{eth}</span>
+                      <div className="flex items-center space-x-3 font-mono">
+                        <span className="text-gray-500">{count} {count > 1 ? "patients" : "patient"}</span>
+                        <span className="font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">{percentage}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-205 shadow-3xs space-y-4 text-xs font-semibold">
+              <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wider border-b pb-2 flex items-center gap-1.5">
+                <Layers className="h-4.5 w-4.5 text-indigo-650" /> Répartition par Nationalité des Patients
+              </h3>
+              <div className="max-h-60 overflow-y-auto text-xs space-y-2 pr-1">
+                {Object.entries(nationaliteStats).map(([nat, count]) => {
+                  const percentage = ((count / (patients.length || 1)) * 100).toFixed(1);
+                  return (
+                    <div key={nat} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg border border-slate-100 bg-white shadow-3xs">
+                      <span className="font-medium text-slate-700">{nat}</span>
+                      <div className="flex items-center space-x-3 font-mono">
+                        <span className="text-gray-500">{count} {count > 1 ? "patients" : "patient"}</span>
+                        <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">{percentage}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

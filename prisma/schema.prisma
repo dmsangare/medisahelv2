@@ -15,6 +15,11 @@ enum Role {
   PHARMACIST
   LAB_TECH
   HR
+  MEDECIN_GENERAL_CHIEF
+  STAGIAIRE
+  AIDE_SOIGNANT
+  CAISSIER_PHARMACIEN
+  GESTIONNAIRE_STOCK
 }
 
 enum HospitalizationStatus {
@@ -36,6 +41,11 @@ enum TransactionType {
 enum LabStatus {
   PENDING
   COMPLETED
+  PENDING_PAYMENT
+  PAID
+  PROCESSING
+  VALIDATED
+  CANCELLED
 }
 
 enum AttendanceStatus {
@@ -56,15 +66,27 @@ enum AppointmentStatus {
 }
 
 model Clinic {
-  id          String   @id @default(uuid())
-  name        String
-  logoUrl     String?
-  address     String?
-  currency    String   @default("FCFA")
-  themeColor  String   @default("#0f766e") // Default teal-700
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  users       User[]
+  id              String   @id @default(uuid())
+  name            String
+  logoUrl         String?
+  address         String?
+  currency        String   @default("FCFA")
+  themeColor      String   @default("#0f766e") // Default teal-700
+  slogan          String?
+  city            String?
+  country         String?
+  phone           String?
+  whatsapp        String?
+  email           String?
+  website         String?
+  licenseNumber   String?
+  rccm            String?
+  ifuNif          String?
+  digitalStamp    String?
+  instSignature   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  users           User[]
 }
 
 model User {
@@ -95,6 +117,8 @@ model Patient {
   bloodType      String?
   allergies      String?
   address        String?
+  ethnie         String            @default("Non renseignée")
+  nationalite    String            @default("Non renseignée")
   status         String            @default("ACTIVE") // ACTIVE, ARCHIVED
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -130,6 +154,13 @@ model Hospitalization {
   reason        String
   status        HospitalizationStatus @default(ADMITTED)
   notes         String?
+  roomId        String?
+  bedId         String?
+  roomType      String?
+  bedType       String?
+  roomPrice     Float?
+  bedPrice      Float?
+  transfers     Json?
 }
 
 model Transaction {
@@ -235,3 +266,355 @@ model AuditLog {
   details   String
   timestamp DateTime @default(now())
 }
+
+model Room {
+  id            String   @id @default(uuid())
+  number        String   @unique
+  type          String
+  service       String
+  floor         String
+  capacity      Int      @default(2)
+  status        String   @default("Disponible")
+  allowedGender String   @default("Mixte")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  beds          Bed[]
+}
+
+model Bed {
+  id            String       @id @default(uuid())
+  number        String       @unique
+  type          String
+  roomId        String
+  room          Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  status        String       @default("Disponible")
+  patientId     String?
+  patientNom    String?
+  dateAdmission String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  histories     BedHistory[]
+}
+
+model BedHistory {
+  id          String    @id @default(uuid())
+  bedId       String
+  bed         Bed       @relation(fields: [bedId], references: [id], onDelete: Cascade)
+  patientId   String
+  patientName String
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  action      String    // ADMISSION, TRANSFER, DISCHARGE, MAINTENANCE
+  notes       String?
+}
+
+model HospitalizationRate {
+  id       String @id @default(uuid())
+  roomType String @unique
+  price    Float
+}
+
+model BedRate {
+  id      String @id @default(uuid())
+  bedType String @unique
+  price   Float
+}
+
+model TransferLog {
+  id                String   @id @default(uuid())
+  patientId         String
+  patientNom        String
+  hospitalizationId String
+  fromRoomNumber    String
+  fromBedNumber     String
+  toRoomNumber      String
+  toBedNumber       String
+  reason            String?
+  userId            String?
+  userName          String?
+  userRole          String?
+  date              DateTime @default(now())
+}
+
+model PharmacyProduct {
+  id             String   @id @default(uuid())
+  codeInterne    String   @unique
+  codeBarre      String
+  dci            String
+  nomCommercial  String
+  forme          String?
+  dosage         String?
+  category       String?
+  supplier       String?
+  priceAchat     Float    @default(0)
+  priceVente     Float    @default(0)
+  stockMin       Int      @default(10)
+  stockMax       Int      @default(500)
+  imageUrl       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model PharmacyLot {
+  id                   String   @id @default(uuid())
+  productId            String
+  lotNumber            String
+  dateFabrication      String?
+  datePeremption       String
+  qtyRecue             Int
+  qtyRemainingDepot    Int
+  qtyRemainingOfficine Int
+  supplier             String?
+  priceAchat           Float    @default(0)
+  attachmentName       String?
+  createdAt            DateTime @default(now())
+}
+
+model PharmacyTransfer {
+  id        String   @id @default(uuid())
+  productId String
+  lotId     String
+  quantity  Int
+  userId    String
+  userName  String
+  status    String   @default("APPROVED")
+  slipUrl   String?
+  date      DateTime @default(now())
+}
+
+model PharmacySale {
+  id                    String   @id @default(uuid())
+  patientId             String?
+  patientName           String   @default("Client Anonyme")
+  cashierId             String
+  cashierName           String
+  total                 Float
+  discount              Float    @default(0)
+  insuranceContribution Float    @default(0)
+  amountPaid            Float
+  paymentMethod         String   @default("CASH")
+  items                 Json     // Contains items list [ { productId, lotId, productName, quantity, price } ]
+  auditToken            String?
+  date                  DateTime @default(now())
+}
+
+model PharmacySupplier {
+  id             String   @id @default(uuid())
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  address        String?
+  createdAt      DateTime @default(now())
+}
+
+model PharmacyAdjustment {
+  id          String   @id @default(uuid())
+  productId   String
+  lotId       String
+  type        String   // CASSE, VOL, PERTE, AJUSTEMENT
+  qtyBefore   Int
+  qtyAfter    Int
+  difference  Int
+  reason      String
+  userId      String
+  userName    String
+  targetStore String   @default("OFFICINE") // DEPOT or OFFICINE
+  date        DateTime @default(now())
+}
+
+model PharmacyAlert {
+  id          String   @id @default(uuid())
+  productId   String?
+  productName String?
+  type        String
+  details     String
+  status      String   @default("ACTIVE")
+  date        DateTime @default(now())
+}
+
+model PharmacyPrescription {
+  id                   String   @id @default(uuid())
+  patientId            String
+  patientName          String
+  doctorName           String
+  prescriptionText     String
+  status               String   @default("PENDING") // PENDING, SERVED, CANCELLED
+  date                 DateTime @default(now())
+  servedAt             String?
+  dispensedBy          String?
+  medications          Json     // Array of medicines requested
+  dispensedMedications Json?    // Array of medicines dispensed
+}
+
+model PharmacyInventory {
+  id                   String   @id @default(uuid())
+  type                 String   // ANNUEL, TOURNANT
+  date                 DateTime @default(now())
+  responsibleSignature String
+  userName             String
+  discrepancyReport    Json     // [{ productId, productName, expected, physical, gap }]
+  status               String   @default("COMPLETED")
+}
+
+model DmgStaff {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  teamName     String   @default("Non assigne") // Equipe A, Equipe B, etc.
+  status       String   @default("ACTIVE") // ACTIVE, INACTIVE
+  availability String   @default("AVAILABLE") // AVAILABLE, ON_LEAVE, SICK
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model DmgGuardPlanning {
+  id              String   @id @default(uuid())
+  shiftType       String   // MATIN, APRES_MIDI, NUIT
+  date            String   // YYYY-MM-DD
+  responsibleId   String
+  responsibleName String
+  referentDocId   String
+  referentDocName String
+  staffIdsAndNames String  // Comma-separated or JSON of staff names/roles
+  createdAt       DateTime @default(now())
+}
+
+model DmgDelegatedCare {
+  id              String   @id @default(uuid())
+  patientId       String
+  patientName     String
+  roomNumber      String   @default("N/A")
+  bedNumber       String   @default("N/A")
+  careType        String   // INJECTION, PERFUSION, PANSEMENT, SURVEILLANCE, PRELEVEMENT, SOIN_INFIRMIER, SPECIFIQUE
+  description     String
+  priority        String   @default("MEDIUM") // HIGH, MEDIUM, LOW
+  prescriberId    String
+  prescriberName  String
+  agentId         String?  // Executant
+  agentName       String?  // Executant Name
+  scheduledTime   String   // HH:MM
+  executedTime    String?  // HH:MM
+  date            String   // YYYY-MM-DD
+  status          String   @default("PENDING") // PENDING, ASSIGNED, IN_PROGRESS, COMPLETED, CANCELLED
+  observations    String?
+  logs            String?  // JSON string or text log of activity
+  difficultyAlert String?  // Difficulty flag/note reported by nurse
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model DmgShiftHandover {
+  id            String   @id @default(uuid())
+  fromShift     String
+  toShift       String
+  date          String
+  senderName    String
+  criticalCases String
+  pendingCares  String
+  pendingLabs   String
+  incidents     String
+  status        String   @default("TRANSMITTED") // TRANSMITTED, RECEIVED
+  validatedBy   String?
+  validatedAt   DateTime?
+  createdAt     DateTime @default(now())
+}
+
+model DmgMainCouranteEntry {
+  id        String   @id @default(uuid())
+  category  String
+  author    String
+  details   String
+  date      String
+  time      String
+  service   String
+  createdAt DateTime @default(now())
+}
+
+model ClinicalVersion {
+  id              String   @id @default(uuid())
+  entityType      String   // "MedicalRecord" | "LabTest" | "PharmacyPrescription" | "DmgDelegatedCare"
+  entityId        String
+  previousContent String
+  newContent      String
+  authorId        String
+  authorName      String
+  authorRole      String
+  reason          String
+  timestamp       DateTime @default(now())
+}
+
+model MedicalLibraryItem {
+  id        String   @id @default(uuid())
+  trigger   String   @unique
+  label     String
+  text      String
+  category  String   // "MEDICAMENT" | "BIOLOGIE" | "SOIN" | "PROTOCOLE"
+  createdAt DateTime @default(now())
+}
+
+model Contact {
+  id        String         @id @default(uuid())
+  lastName  String
+  firstName String
+  phone     String?
+  email     String         @unique
+  category  String         // PATIENTS, PERSONNEL, FOURNISSEURS, ASSURANCES, PARTENAIRES, CUSTOM
+  status    String         @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  groups    ContactGroup[] @relation("ContactGroupContacts")
+}
+
+model ContactGroup {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  details   String?
+  contacts  Contact[] @relation("ContactGroupContacts")
+  createdAt DateTime  @default(now())
+}
+
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  subject   String
+  body      String   // With {{nom_patient}}, etc.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailCampaign {
+  id          String   @id @default(uuid())
+  name        String
+  subject     String
+  body        String   // Dynamic content template
+  targetGroup String   // e.g. "ALL_PATIENTS", "ALL_DOCTORS", etc.
+  sentCount   Int      @default(0)
+  openCount   Int      @default(0)
+  failCount   Int      @default(0)
+  status      String   @default("DRAFT") // DRAFT, SENT
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EmailLog {
+  id             String   @id @default(uuid())
+  recipientName  String
+  recipientEmail String
+  category       String
+  subject        String
+  body           String
+  status         String   @default("SENT") // SENT, DELIVERED, OPENED, FAILED
+  senderName     String
+  timestamp      DateTime @default(now())
+}
+
+model EmailRecipient {
+  id        String   @id @default(uuid())
+  campaignId String
+  email     String
+  name      String
+  status    String   @default("PENDING") // PENDING, SENT, FAILED
+  sentAt    DateTime?
+}
+
+

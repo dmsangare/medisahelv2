@@ -240,45 +240,83 @@ export default function BrandingSettings({
     }
   };
 
-  // Perform physical backup of localStorage keys into downloaded JSON file
-  const handleBackupLocally = () => {
-    const backupKeys = ["patients_data", "appointments_data", "medical_records", "beds_data", "labs_data", "stocks_data", "invoices_data", "presences_data", "mails_data", "audit_logs"];
-    const backupObj: Record<string, string | null> = {};
-
-    backupKeys.forEach(key => {
-      backupObj[key] = localStorage.getItem(key);
-    });
-
-    const fileContent = JSON.stringify(backupObj, null, 2);
-    const blob = new Blob([fileContent], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `SAUVEGARDE_MEDISHAHEL_LOCAL_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    alert("Fichier de sauvegarde chiffré généré et téléchargé avec succès.");
+  // Perform physical backup of database into downloaded JSON file via real backend backup
+  const handleBackupLocally = async () => {
+    try {
+      const response = await fetch("/api/database/export", {
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error("Impossible de récupérer la sauvegarde du serveur.");
+      }
+      const backupObj = await response.json();
+      const fileContent = JSON.stringify(backupObj, null, 2);
+      const blob = new Blob([fileContent], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `SAUVEGARDE_MEDISHAHEL_SQL_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      alert("Fichier de sauvegarde chiffré et sécurisé généré et téléchargé avec succès.");
+    } catch (err: any) {
+      alert("Erreur lors de la capture de la sauvegarde : " + err.message);
+    }
   };
 
-  // Restore database by uploading prior JSON backup
+  const handleBackupOnServer = async () => {
+    try {
+      const response = await fetch("/api/database/backup-server", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error("Impossible d'exécuter la sauvegarde sur le serveur.");
+      }
+      const resData = await response.json();
+      alert(`Félicitations ! Sauvegarde SQL/JSON effectuée sur le serveur.\nFichier : ${resData.filename}`);
+    } catch (err: any) {
+      alert("Erreur lors de la sauvegarde serveur : " + err.message);
+    }
+  };
+
+  // Restore database by uploading prior JSON backup to the server
   const handleRestoreLocally = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        Object.entries(data).forEach(([key, val]) => {
-          if (typeof val === "string") {
-            localStorage.setItem(key, val);
-          }
+        if (!data || !data._medishahel_backup_) {
+          alert("Erreur de format de fichier : ce fichier ne correspond pas à une sauvegarde de MédiSahel Clinique.");
+          return;
+        }
+
+        const response = await fetch("/api/database/restore", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+          },
+          body: JSON.stringify(data)
         });
-        alert("Restauration physique effectuée. Redémarrage de l'interface en cours...");
+
+        if (!response.ok) {
+          const errMsg = await response.json().catch(() => ({ error: "Erreur serveur indéterminée." }));
+          throw new Error(errMsg.error || "Restauration refusée.");
+        }
+
+        alert("Restauration PostgreSQL physique effectuée avec succès sur le serveur. Redémarrage de l'interface en cours...");
         window.location.reload();
-      } catch (err) {
-        alert("Erreur de format de fichier de sauvegarde.");
+      } catch (err: any) {
+        alert("Échec de la restauration de la base de données : " + err.message);
       }
     };
     reader.readAsText(file);
@@ -1315,6 +1353,13 @@ export default function BrandingSettings({
                     />
                   </label>
                 </div>
+
+                <button
+                  onClick={handleBackupOnServer}
+                  className="w-full bg-[#0284c7] hover:bg-sky-700 text-white font-extrabold p-2 px-3 rounded flex items-center justify-center gap-1.5 cursor-pointer transition-all uppercase tracking-wide text-[9px]"
+                >
+                  <Server className="h-3.5 w-3.5" /> Lancer Sauvegarde PostgreSQL (Serveur)
+                </button>
               </div>
 
               {/* Automatic Archiving Config (Archivage automatique) */}

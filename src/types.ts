@@ -1,4 +1,4 @@
-export type Role = "ADMIN" | "DOCTOR" | "NURSE" | "CASHIER" | "PHARMACIST" | "LAB_TECH" | "HR";
+export type Role = "ADMIN" | "DOCTOR" | "NURSE" | "CASHIER" | "PHARMACIST" | "LAB_TECH" | "HR" | "MEDECIN_GENERAL_CHIEF" | "STAGIAIRE" | "AIDE_SOIGNANT" | "CAISSIER_PHARMACIEN" | "GESTIONNAIRE_STOCK";
 
 export type HospitalizationStatus = "ADMITTED" | "DISCHARGED";
 
@@ -21,6 +21,18 @@ export interface Clinic {
   address?: string | null;
   currency: string;
   themeColor: string;
+  slogan?: string | null;
+  city?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  website?: string | null;
+  licenseNumber?: string | null;
+  rccm?: string | null;
+  ifuNif?: string | null;
+  digitalStamp?: string | null;
+  instSignature?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,6 +47,35 @@ export interface User {
   status: string;
   createdAt?: string;
   updatedAt?: string;
+  firstName?: string;
+  lastName?: string;
+  login?: string;
+  profession?: string;
+  contractType?: string;
+  phone?: string;
+  department?: string;
+  suspendedUntil?: string;
+  lastLoginAt?: string;
+  allowedModules?: string[];
+  permissions?: string[];
+  matricule?: string;
+  gender?: string;
+  nina?: string;
+  hireDate?: string;
+  dob?: string;
+  address?: string;
+  supervisorId?: string;
+  signaturePad?: string;
+  sealText?: string;
+  ordNum?: string;
+  roleHistory?: Array<{
+    changedBy: string;
+    changedByName: string;
+    action: string;
+    oldVal: string;
+    newVal: string;
+    timestamp: string;
+  }>;
 }
 
 export interface Patient {
@@ -49,6 +90,8 @@ export interface Patient {
   bloodType?: string | null;
   allergies?: string | null;
   address?: string | null;
+  ethnie: string;
+  nationalite: string;
   status: string;
   createdAt?: string;
   updatedAt?: string;
@@ -77,6 +120,13 @@ export interface Hospitalization {
   reason: string;
   status: HospitalizationStatus;
   notes?: string | null;
+  roomId?: string;
+  bedId?: string;
+  roomType?: string;
+  bedType?: string;
+  roomPrice?: number;
+  bedPrice?: number;
+  transfers?: any[];
 }
 
 export interface Transaction {
@@ -90,6 +140,9 @@ export interface Transaction {
   cashierName: string;
   date: string;
   paymentMethod: string;
+  category?: string;
+  items?: Array<{ name: string; quantity: number; price: number; }>;
+  receiptNumber?: string;
   createdAt?: string;
 }
 

@@ -1,10 +1,4 @@
-import { 
-  Patient, 
-  BedAllocation, 
-  StockItem, 
-  Invoice, 
-  TriageRecord 
-} from "../types";
+import { Patient } from "../types.ts";
 import { 
   Users, 
   Activity, 
@@ -15,6 +9,37 @@ import {
   DollarSign, 
   Thermometer 
 } from "lucide-react";
+
+interface BedAllocation {
+  id: string;
+  chambre: string;
+  service: string;
+  statut: string;
+  patientNom?: string;
+  temperature?: string;
+}
+
+interface StockItem {
+  id: string;
+  nom: string;
+  quantite: number;
+  seuilAlerte: number;
+  datePeremption: string;
+}
+
+interface Invoice {
+  id: string;
+  statut: string;
+  montantPatiente: number;
+  montantAssurance: number;
+}
+
+interface TriageRecord {
+  id: string;
+  patientNom: string;
+  couleur: string;
+  plaintePrincipale: string;
+}
 
 interface DashboardViewProps {
   patientsList: Patient[];

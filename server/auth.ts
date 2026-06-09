@@ -9,6 +9,7 @@ export interface TokenPayload {
   role: string;
   mustChangePassword: boolean;
   clinicId: string;
+  allowedModules?: string[];
 }
 
 export function generateToken(payload: TokenPayload): string {

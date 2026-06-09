@@ -20,7 +20,7 @@ export const HRRoster: React.FC<HRRosterProps> = ({ token, currentUser, clinicTh
   // Pointage state
   const [pointageStatus, setPointageStatus] = useState<"PRESENT" | "LATE" | "ABSENT">("PRESENT");
   const [pointageReason, setPointageReason] = useState("");
-  const [pointageUser, setPointageUser] = useState("");
+  const [pointageUser, setPointageUser] = useState(currentUser.id);
 
   // Payroll form state
   const [payrollUser, setPayrollUser] = useState("");
@@ -206,8 +206,7 @@ export const HRRoster: React.FC<HRRosterProps> = ({ token, currentUser, clinicTh
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Enregistrer pour :</label>
                 <select
                   value={pointageUser}
-                  onChange={e => setPayrollUser(e.target.value)} // target pointing
-                  defaultValue={currentUser.id}
+                  onChange={e => setPointageUser(e.target.value)}
                   className="w-full h-10 px-3 py-2 bg-white border border-gray-250 rounded-lg text-xs"
                 >
                   <option value={currentUser.id}>Moi-même ({currentUser.name})</option>

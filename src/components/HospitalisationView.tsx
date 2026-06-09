@@ -299,6 +299,11 @@ export default function HospitalisationView({
                     </span>
                     <p className="font-black text-slate-900 text-xs">{activeSelectedBed.patientNom}</p>
                     <span className="text-[10px] text-slate-450 font-mono">Dossier : {activeSelectedBed.patientId}</span>
+                    {patients.find(p => p.id === activeSelectedBed.patientId) && (
+                      <span className="block text-[10px] text-teal-800 font-sans font-semibold">
+                        {patients.find(p => p.id === activeSelectedBed.patientId)?.nationalite || "Non renseignée"} • {patients.find(p => p.id === activeSelectedBed.patientId)?.ethnie || "Non renseignée"}
+                      </span>
+                    )}
                     {activeSelectedBed.dateAdmission && (
                       <span className="block text-[10px] text-slate-400 font-medium">Date d'admission : {activeSelectedBed.dateAdmission}</span>
                     )}
