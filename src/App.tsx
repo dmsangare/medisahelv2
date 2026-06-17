@@ -944,6 +944,40 @@ export default function App() {
               {loginLoading ? "Établissement de la session..." : "S'authentifier sur la clinique"}
             </button>
           </form>
+
+          {/* Quick credentials filler for testing of the 10 roles requested by Adama SANGARÉ */}
+          <div className="mt-4 border-t border-slate-900/80 pt-4 text-left">
+            <span className="block text-[9px] text-[#A0AEC0] font-mono uppercase tracking-widest mb-2 font-black">
+              🔑 Identifiants de Test Clinique (Cliquer pour charger)
+            </span>
+            <div className="grid grid-cols-2 gap-2 text-[10.5px]">
+              {[
+                { label: "Promoteur / DG", login: "promoteur_dg", pass: "DGPassword2026!" },
+                { label: "Administrateur IT", login: "admin", pass: "AdminPassword2026!" },
+                { label: "Médecin Référent", login: "dr_sangare", pass: "DoctorPassword2026!" },
+                { label: "Infirmier Major", login: "infirmier_test", pass: "InfirmierPassword2026!" },
+                { label: "Aide-Soignant", login: "aide_soignant_test", pass: "AideSoignantPassword2026!" },
+                { label: "Stagiaire Médical", login: "stagiaire_test", pass: "StagiairePassword2026!" },
+                { label: "Laborantin Biologiste", login: "laborantin_test", pass: "LaborantinPassword2026!" },
+                { label: "Pharmacienne Chef", login: "pharmacien_test", pass: "PharmacienPassword2026!" },
+                { label: "Caissier Principal", login: "caissier_test", pass: "CaissierPassword2026!" },
+                { label: "Responsable RH", login: "rh_test", pass: "RHPassword2026!" }
+              ].map((account) => (
+                <button
+                  key={account.login}
+                  type="button"
+                  onClick={() => {
+                    setEmailInput(account.login);
+                    setPasswordInput(account.pass);
+                  }}
+                  className="flex flex-col p-2 bg-slate-900/50 hover:bg-teal-900/20 border border-slate-800/80 hover:border-teal-700/50 rounded-xl text-left cursor-pointer transition-colors"
+                >
+                  <span className="font-bold text-slate-200 text-[10px]">{account.label}</span>
+                  <span className="text-[9px] text-slate-500 font-mono mt-0.5 truncate">{account.login}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Support & IT Assistance Footer - Permanent & Discreet */}
