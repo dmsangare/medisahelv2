@@ -3,7 +3,7 @@ import {
   LogOut, Shield, User as UserIcon, Calendar, Activity, Sun, Moon, 
   Search, Bell, Mail, MessageSquare, AlertTriangle, CheckSquare, 
   Clock, Heart, ShieldCheck, HelpCircle, FileText, ShieldAlert,
-  Award, Pill, FlaskConical, Stethoscope
+  Award, Pill, FlaskConical, Stethoscope, Printer, Download, Filter
 } from "lucide-react";
 import { User, Clinic } from "../types.ts";
 
@@ -45,12 +45,55 @@ export const Header: React.FC<HeaderProps> = ({
   const [showEmailMenu, setShowEmailMenu] = useState(false);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
 
+  // Advanced filters state
+  const [filterType, setFilterType] = useState("all");
+  const [filterDate, setFilterDate] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterDoctor, setFilterDoctor] = useState("");
+
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(searchQuery);
-    }, 300);
+    }, 250);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  // Fetch search results from the backend in real-time
+  useEffect(() => {
+    if (!showSearchResults || searchQuery.trim() === "") {
+      setSearchResults([]);
+      return;
+    }
+
+    const fetchResults = async () => {
+      const q = debouncedQuery.trim();
+      const stoken = localStorage.getItem("medisahel_token");
+      if (!stoken) return;
+
+      setSearchLoading(true);
+      try {
+        const url = `/api/search/global?query=${encodeURIComponent(q)}&type=${filterType}&date=${filterDate}&status=${filterStatus}&doctor=${encodeURIComponent(filterDoctor)}`;
+        const res = await fetch(url, {
+          headers: {
+            "Authorization": `Bearer ${stoken}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data);
+        }
+      } catch (err) {
+        console.error("Failed to query global search backend:", err);
+      } finally {
+        setSearchLoading(false);
+      }
+    };
+
+    fetchResults();
+  }, [debouncedQuery, filterType, filterDate, filterStatus, filterDoctor, showSearchResults]);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
@@ -60,51 +103,129 @@ export const Header: React.FC<HeaderProps> = ({
     setSearchQuery("");
     if (onSelectTab) {
       if (item.type === "patient") {
-        onSelectTab("dme", { patientName: item.label, isPatient: true, id: item.id });
-      } else if (item.type === "invoice") {
-        onSelectTab("billing", { invoiceId: item.label, isInvoice: true });
-      } else if (item.type === "drug") {
-        onSelectTab("pharmacy_sales", { itemName: item.label, isItem: true });
-      } else if (item.type === "lab") {
+        onSelectTab("dme", { patientName: item.patient, isPatient: true, id: item.id });
+      } else if (item.type === "consultation") {
+        onSelectTab("dmg", { consultationId: item.id, isConsultation: true });
+      } else if (item.type === "facture") {
+        onSelectTab("billing", { invoiceId: item.id, isInvoice: true });
+      } else if (item.type === "analyse") {
         onSelectTab("lab", { focusAnalyses: true });
-      } else if (item.type === "appointment") {
-        onSelectTab("appointments", { focusCalendar: true });
+      } else if (item.type === "ordonnance") {
+        onSelectTab("pharmacy_sales", { prescriptionId: item.id, isPrescription: true });
+      } else if (item.type === "document" || item.type === "imagerie") {
+        onSelectTab("documents", { focusDocuments: true });
       } else {
         onSelectTab("dashboard");
       }
     }
   };
 
-  // Build the search database dynamically combining static and dynamic patients (Point 3)
-  const searchDatabase = [
-    ...patientsList.map(p => ({
-      id: p.id,
-      type: "patient",
-      category: "Patient (DME)",
-      label: `${p.firstName} ${p.lastName}`.toUpperCase(),
-      info: `NID: ${p.nationalId || "N/A"} • Tél: ${p.phone || "N/A"}`,
-      desc: `Sexe: ${p.gender || "N/A"} • Ethnie: ${p.ethnie || "N/A"} • Dossier Actif`
-    })),
-    { type: "patient", category: "Patient", label: "DIARRA AMADOU", info: "N° Dossier: DME-849 • Mopti", desc: "Patient admis - Surveillance réanimation" },
-    { type: "patient", category: "Patient", label: "SACKO MARIAM", info: "N° Dossier: DME-1122 • Sevaré", desc: "Hospitalisée - Chambre 402, Lit B" },
-    { type: "invoice", category: "Facture", label: "FAC-2026-1049", info: "Montant: 45 000 FCFA • Tiers payant: CNAM", desc: "Facturation - Assurance Mutuelle active" },
-    { type: "invoice", category: "Facture", label: "FAC-2026-1050", info: "Montant: 12 500 FCFA • Payé comptant", desc: "Caisse Pharmacie - Reçu acquitté" },
-    { type: "lab", category: "Laboratoire", label: "RÉSULTAT NFS & BIOCH", info: "Commanditaire: Dr. Ibrahim Touré", desc: "Analyses de sang complet terminées • Critique" },
-    { type: "drug", category: "Médicament", label: "PARACÉTAMOL INJECTABLE 500MG", info: "Stock: 412 flacons • Lot #PM-9941", desc: "Date péremption: 31/12/2026 - Alerte bas" },
-    { type: "drug", category: "Médicament", label: "AMOXIClLLINE GÉLULES 250MG", info: "Stock: 80 boîtes • Lot #AM-8840", desc: "Pharmacie principale - Stock suffisant" },
-    { type: "collaborator", category: "Collaborateur", label: "DR. IBRAHIM TOURÉ", info: "Rôle: Médecin Généraliste", desc: "Affectation: Service Médecine Générale" },
-    { type: "collaborator", category: "Collaborateur", label: "FATOUMATA DIARRA", info: "Rôle: Personnel Infirmier", desc: "Affectation: Hospitalisation & Lits" },
-    { type: "appointment", category: "Rendez-vous", label: "SACKO MARIAM - DR. DIALLO", info: "Prévu: 14/06/2026 à 10:30", desc: "Visite de contrôle chirurgie générale" }
-  ];
+  // Export as XLS (CSV format)
+  const handleExportExcel = () => {
+    if (searchResults.length === 0) return;
+    let csvContent = "\uFEFF"; // UTF-8 BOM
+    csvContent += "Type;Identifiant/N°;Patient;Date;Auteur/Réf;Titre;Détails;Statut\n";
+    
+    searchResults.forEach(item => {
+      const typeLabel = item.category || item.type;
+      const refNum = item.number || item.id;
+      const patName = item.patient || "N/A";
+      const itemDate = item.date ? new Date(item.date).toLocaleDateString("fr-FR") : "N/A";
+      const docName = item.doctor || "N/A";
+      const title = (item.title || "").replace(/;/g, ",").replace(/\n/g, " ");
+      const details = (item.details || "").replace(/;/g, ",").replace(/\n/g, " ");
+      const status = item.status || "N/A";
+      
+      csvContent += `${typeLabel};${refNum};${patName};${itemDate};${docName};${title};${details};${status}\n`;
+    });
+    
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `recherche_medisahel_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
-  const filteredSearchResults = debouncedQuery.trim() === "" 
-    ? [] 
-    : searchDatabase.filter(item => 
-        item.label.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
-        (item.info && item.info.toLowerCase().includes(debouncedQuery.toLowerCase())) ||
-        (item.desc && item.desc.toLowerCase().includes(debouncedQuery.toLowerCase()))
-      );
+  // Export as PDF (using Print view)
+  const handleExportPDF = () => {
+    if (searchResults.length === 0) return;
+    
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    
+    const rows = searchResults.map(item => `
+      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
+        <td style="padding: 10px; font-weight: bold; color: #0f172a;">${item.category || item.type}</td>
+        <td style="padding: 10px; font-family: monospace; color: #475569;">${item.number || item.id}</td>
+        <td style="padding: 10px;">${item.patient || "N/A"}</td>
+        <td style="padding: 10px; white-space: nowrap;">${item.date ? new Date(item.date).toLocaleDateString("fr-FR") : "N/A"}</td>
+        <td style="padding: 10px;">${item.doctor || "N/A"}</td>
+        <td style="padding: 10px; font-weight: 500;">${item.title}</td>
+        <td style="padding: 10px; color: #64748b;">${item.details || ""}</td>
+        <td style="padding: 10px; text-align: right;"><span style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; text-transform: uppercase;">${item.status}</span></td>
+      </tr>
+    `).join("");
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Rapport de Recherche Globale - MédiSahel</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #334155; padding: 40px; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px; }
+            .headline { font-size: 24px; font-weight: bold; color: #0f172a; margin: 0; }
+            .subline { font-size: 12px; color: #64748b; margin-top: 5px; }
+            .clinic-name { font-size: 16px; font-weight: bold; color: #0d9488; }
+            table { width: 100%; border-collapse: collapse; text-align: left; }
+            th { background-color: #f8fafc; color: #475569; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 10px; border-bottom: 1px solid #cbd5e1; }
+            .footer { margin-top: 50px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="headline">Rapport de Recherche Globale</div>
+              <div class="subline">Critères : "${searchQuery}" • Extraits le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="clinic-name">${clinic.name}</div>
+              <div style="font-size: 10px; color: #64748b; margin-top: 4px;">ERP Hospitalier MédiSahel</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Réf/Id</th>
+                <th>Patient</th>
+                <th>Date</th>
+                <th>Créateur/Auteur</th>
+                <th>Titre / Diagnostic</th>
+                <th>Détails</th>
+                <th style="text-align: right;">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+          <div class="footer">
+            Document généré par l'ERP MédiSahel Clinique. Cachet numérique de conformité : ${clinic.licenseNumber || "N/A"}.
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   // Close menus on click outside
   useEffect(() => {
@@ -172,7 +293,13 @@ export const Header: React.FC<HeaderProps> = ({
               />
               {searchQuery && (
                 <button 
-                  onClick={() => setSearchQuery("")} 
+                  onClick={() => {
+                    setSearchQuery("");
+                    setFilterType("all");
+                    setFilterDate("all");
+                    setFilterStatus("all");
+                    setFilterDoctor("");
+                  }} 
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-slate-600 text-xs font-mono font-bold"
                 >
                   Clear
@@ -180,39 +307,154 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Simulated Live Results Popup */}
+            {/* Smart Search Panel Popover Dashboard */}
             {showSearchResults && searchQuery.trim() !== "" && (
-              <div className="absolute top-11 left-0 right-0 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 overflow-hidden text-xs max-h-[350px] overflow-y-auto">
-                <div className="bg-slate-50 px-4 py-2 font-mono text-[9px] uppercase tracking-wider text-gray-400 border-b border-gray-100 flex justify-between">
-                  <span>Index de la Clinique • {filteredSearchResults.length} résultats</span>
-                  <kbd className="bg-white border border-gray-200 px-1 rounded text-4xs">ESC</kbd>
+              <div className="absolute top-11 right-0 w-[95vw] md:w-[780px] md:-right-24 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-xs">
+                {/* Advanced Filters Bar */}
+                <div className="bg-slate-50 p-3.5 border-b border-gray-100 flex flex-wrap gap-2.5 items-end justify-between">
+                  {/* Left Column Filters */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Filter Type */}
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-550 mb-1 uppercase font-mono tracking-wider">Type</span>
+                      <select 
+                        value={filterType} 
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="p-1 px-2 border border-gray-200 rounded-lg text-3xs font-medium bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-500 font-sans"
+                      >
+                        <option value="all">Tout</option>
+                        <option value="patient">Patients (DME)</option>
+                        <option value="consultation">Consultations</option>
+                        <option value="ordonnance">Ordonnances</option>
+                        <option value="analyse">Analyses Labo</option>
+                        <option value="facture">Factures</option>
+                        <option value="document">Documents GECD</option>
+                        <option value="imagerie">Examens Imagerie</option>
+                      </select>
+                    </div>
+
+                    {/* Filter Date */}
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-550 mb-1 uppercase font-mono tracking-wider">Période</span>
+                      <select 
+                        value={filterDate} 
+                        onChange={(e) => setFilterDate(e.target.value)}
+                        className="p-1 px-2 border border-gray-200 rounded-lg text-3xs font-medium bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-500 font-sans"
+                      >
+                        <option value="all">Toutes dates</option>
+                        <option value="today">Aujourd'hui</option>
+                        <option value="week">Cette semaine</option>
+                        <option value="month">Ce mois-ci</option>
+                        <option value="year">Cette année</option>
+                      </select>
+                    </div>
+
+                    {/* Filter Status */}
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-550 mb-1 uppercase font-mono tracking-wider">Statut</span>
+                      <select 
+                        value={filterStatus} 
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="p-1 px-2 border border-gray-200 rounded-lg text-3xs font-medium bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-500 font-sans"
+                      >
+                        <option value="all">Tous statuts</option>
+                        <option value="pending">En attente</option>
+                        <option value="validated">Validé / Prêt</option>
+                        <option value="paid">Payé</option>
+                      </select>
+                    </div>
+
+                    {/* Filter Doctor */}
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold text-slate-550 mb-1 uppercase font-mono tracking-wider">Médecin</span>
+                      <input 
+                        type="text"
+                        placeholder="Chercher praticien..."
+                        value={filterDoctor} 
+                        onChange={(e) => setFilterDoctor(e.target.value)}
+                        className="p-1 px-2 border border-gray-200 rounded-lg text-3xs bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-500 font-sans w-28 placeholder:text-gray-300"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right Column Action Exports */}
+                  <div className="flex items-center gap-1.5 self-end">
+                    <button 
+                      onClick={handleExportExcel}
+                      disabled={searchResults.length === 0}
+                      className="p-1 px-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-3xs font-extrabold cursor-pointer hover:bg-emerald-100/70 transition-colors flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed font-sans"
+                    >
+                      <Download className="h-3 w-3" />
+                      <span>Excel (XLS)</span>
+                    </button>
+                    <button 
+                      onClick={handleExportPDF}
+                      disabled={searchResults.length === 0}
+                      className="p-1 px-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-3xs font-extrabold cursor-pointer hover:bg-indigo-100/70 transition-colors flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed font-sans"
+                    >
+                      <Printer className="h-3 w-3" />
+                      <span>Imprimer (PDF)</span>
+                    </button>
+                  </div>
                 </div>
-                {filteredSearchResults.length === 0 ? (
-                  <div className="p-4 text-center text-slate-400 italic font-medium">
-                    Aucune correspondance clinique trouvée pour "{searchQuery}"
+
+                <div className="bg-slate-100 px-4 py-1.5 font-mono text-[9px] uppercase tracking-wider text-gray-550 border-b border-gray-150 flex justify-between items-center">
+                  <span>Index d'ERP Clinique • {searchLoading ? "Recherche en cours..." : `${searchResults.length} résultats correspondants`}</span>
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="bg-white border border-gray-250 px-1 rounded text-4xs">ESC</kbd>
+                  </div>
+                </div>
+
+                {searchLoading ? (
+                  <div className="p-8 text-center text-slate-400 italic font-medium flex flex-col items-center justify-center gap-2">
+                    <div className="animate-spin h-5 w-5 border-2 border-teal-500 border-t-transparent rounded-full" />
+                    <span>Recherche en cours dans la base de données...</span>
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 italic font-medium">
+                    Aucune correspondance clinique ou document trouvé pour "{searchQuery}"
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
-                    {filteredSearchResults.map((item, idx) => (
+                  <div className="divide-y divide-gray-100 max-h-[350px] overflow-y-auto">
+                    {searchResults.map((item, idx) => (
                       <div 
                         key={idx} 
                         onClick={() => handleResultClick(item)}
-                        className="p-3 hover:bg-slate-50/70 transition-colors cursor-pointer flex justify-between items-start"
+                        className="p-3 hover:bg-slate-50/75 transition-colors cursor-pointer flex justify-between items-start gap-3"
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-800">{item.label}</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold uppercase ${
-                              item.type === "patient" ? "bg-blue-50 text-blue-600 border border-blue-200/30" :
-                              item.type === "lab" ? "bg-purple-50 text-purple-600 border border-purple-200/30" :
-                              item.type === "drug" ? "bg-emerald-50 text-emerald-600 border border-emerald-200/30" :
-                              "bg-orange-50 text-orange-600 border border-orange-200/30"
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-800 text-xs">{item.title}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold uppercase shrink-0 border ${
+                              item.type === "patient" ? "bg-blue-50 text-blue-700 border-blue-200/40" :
+                              item.type === "consultation" ? "bg-teal-50 text-teal-700 border-teal-200/40" :
+                              item.type === "analyse" ? "bg-purple-50 text-purple-700 border-purple-200/40" :
+                              item.type === "ordonnance" ? "bg-amber-50 text-amber-700 border-amber-200/40" :
+                              item.type === "facture" ? "bg-emerald-50 text-emerald-800 border-emerald-200/40" :
+                              item.type === "imagerie" ? "bg-rose-50 text-rose-700 border-rose-200/40" :
+                              "bg-slate-50 text-slate-600 border-slate-200/40"
                             }`}>
-                              {item.category}
+                              {item.category || item.type}
+                            </span>
+                            <span className="text-[9px] font-mono font-extrabold text-slate-500 uppercase shrink-0">
+                              {item.number}
                             </span>
                           </div>
-                          <p className="text-3xs text-slate-500 font-mono mt-0.5">{item.info}</p>
-                          <p className="text-3xs text-slate-400 italic mt-0.5">{item.desc}</p>
+                          
+                          {/* Metadata row details */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 mt-1 text-3xs text-slate-500 font-sans">
+                            <p><span className="font-semibold text-slate-650">Patient:</span> <span className="font-bold text-slate-800">{item.patient}</span></p>
+                            <p><span className="font-semibold text-slate-650">Créé par:</span> <span className="font-semibold text-slate-700">{item.doctor || "N/A"}</span></p>
+                          </div>
+                          <p className="text-3xs text-slate-400 italic mt-0.5 line-clamp-2">{item.details}</p>
+                        </div>
+                        <div className="text-right shrink-0 self-center">
+                          <p className="text-4xs text-slate-450 font-mono font-bold leading-none mb-1">
+                            {item.date ? new Date(item.date).toLocaleDateString("fr-FR") : "N/A"}
+                          </p>
+                          <span className="inline-block bg-slate-100 text-slate-700 text-[8px] font-extrabold font-mono px-1 py-0.2 rounded border border-slate-250">
+                            {item.status}
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -339,13 +581,40 @@ export const Header: React.FC<HeaderProps> = ({
                         else if (toast.includes("💰") || toast.includes("Caisse")) badgeBg = "bg-emerald-50 text-emerald-800 border border-emerald-100";
                         else if (toast.includes("💊") || toast.includes("Pharmacie")) badgeBg = "bg-amber-50 text-amber-800 border border-amber-100";
                         
+                        const isNewPatientAlert = toast.includes("Nouveau patient") || toast.includes("patient orienté") || toast.includes("caisse");
+                        let matchedPatient: any = null;
+                        if (isNewPatientAlert && patientsList && patientsList.length > 0) {
+                          matchedPatient = patientsList.find(p => {
+                            const lName = p.lastName.toUpperCase();
+                            const fName = p.firstName.toUpperCase();
+                            return toast.toUpperCase().includes(lName) || toast.toUpperCase().includes(fName);
+                          });
+                        }
+
                         return (
-                          <div key={index} className="p-3 hover:bg-slate-50/70 flex gap-2.5 items-start">
+                          <div 
+                            key={index} 
+                            onClick={() => {
+                              if (matchedPatient && onSelectTab) {
+                                window.location.hash = `#/dmg/consultation/${matchedPatient.id}`;
+                                onSelectTab("dmg", { isConsultationRedirect: true, id: matchedPatient.id });
+                                setShowNotificationMenu(false);
+                              }
+                            }}
+                            className={`p-3 flex gap-2.5 items-start transition-all ${
+                              matchedPatient ? "cursor-pointer hover:bg-teal-50/70 bg-teal-50/10 border-l-2 border-teal-500" : "hover:bg-slate-50/70"
+                            }`}
+                          >
                             <span className="h-2 w-2 rounded-full bg-teal-500 shrink-0 mt-1.5 animate-pulse"></span>
                             <div className="flex-1">
                               <p className="font-bold text-slate-800 leading-snug">
                                 {toast}
                               </p>
+                              {matchedPatient && (
+                                <span className="text-[7.5px] font-extrabold text-teal-700 block mt-0.5 underline">
+                                  ➡️ Ouvrir la consultation de {matchedPatient.firstName} {matchedPatient.lastName.toUpperCase()}
+                                </span>
+                              )}
                               <div className="flex items-center justify-between mt-1.5">
                                 <span className={`text-[8px] tracking-wide font-mono uppercase px-1 py-0.2 rounded font-black ${badgeBg}`}>
                                   En temps réel

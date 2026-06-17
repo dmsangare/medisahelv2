@@ -49,6 +49,9 @@ export default function App() {
   // Selected patient for DME sub-view
   const [selectedDmePatient, setSelectedDmePatient] = useState<Patient | null>(null);
 
+  // Initial patient ID to open directly in DMG (Consultations)
+  const [dmgInitialPatientId, setDmgInitialPatientId] = useState<string | null>(null);
+
   // Active navigation tab defaulting to central clinical dashboard
   const [activeTab, setActiveTab] = useState("dashboard");
 
@@ -173,10 +176,84 @@ export default function App() {
   };
 
   // Real-time server push / synchronization simulation state (Requirement 3)
-  const [liveToasts, setLiveToasts] = useState<string[]>([]);
-  const triggerToast = (text: string) => {
-    setLiveToasts(prev => [...prev.slice(-3), text]);
+  const [liveToasts, setLiveToasts] = useState<any[]>([]);
+  const triggerToast = (text: string | { text: string; patientId?: string; onClick?: () => void }) => {
+    const obj = typeof text === "string" ? { text } : text;
+    setLiveToasts(prev => [...prev.slice(-3), obj]);
   };
+
+  // Global Sound Alert for clinical notifications (Requirements Part 1)
+  const playSoundAlert = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      oscillator.frequency.setValueAtTime(880.00, audioCtx.currentTime + 0.15); // A5 (musical chime)
+      
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {
+      console.warn("Global AudioContext blocked by user agent gesture policy:", e);
+    }
+  };
+
+  const handleNotificationRedirect = (patientId: string) => {
+    // 1. Set deep link hash in URL
+    window.location.hash = `#/dmg/consultation/${patientId}`;
+    
+    // 2. Set states to open dmg module and focus the correct patient
+    setDmgInitialPatientId(patientId);
+    setActiveTab("dmg");
+    
+    // 3. Spawn/ensure the DMG virtual tab is selected
+    setVirtualTabs(prev => {
+      if (!prev.some(t => t.id === "dmg")) {
+        return [...prev, { id: "dmg", label: "Consultations (DMG)", tabType: "dmg" }];
+      }
+      return prev;
+    });
+    setActiveVirtualTabId("dmg");
+  };
+
+  // Global SSE Real-Time Event Observer for Patient Waiting Room (active even on other tabs)
+  useEffect(() => {
+    if (!token || !currentUser) return;
+
+    // Listen only if user has a clinician/doctor role
+    const isClinician = currentUser.role === "DOCTOR" || currentUser.role === "MEDECIN_GENERAL_CHIEF" || currentUser.role === "ADMIN";
+    if (!isClinician) return;
+
+    const es = new EventSource("/api/realtime/stream");
+    
+    es.addEventListener("WAITING_ROOM_ADD", (e: any) => {
+      try {
+        const item = JSON.parse(e.data);
+        playSoundAlert();
+        
+        // Push raw toast with patientId so it becomes clickable
+        triggerToast({
+          text: `🔔 Nouveau patient orienté par la caisse : ${item.patientPrenom} ${item.patientNom.toUpperCase()}`,
+          patientId: item.patientId
+        });
+      } catch (err) {
+        console.error("Global SSE WAITING_ROOM_ADD parse error", err);
+      }
+    });
+
+    return () => {
+      es.close();
+    };
+  }, [token, currentUser]);
+
   const [toastHistory, setToastHistory] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("medisahel_toast_history");
@@ -194,15 +271,17 @@ export default function App() {
   // Automatically feed dynamic toasts to the persistent clinical log, and auto-dismiss active popups after 6s (Point 5)
   useEffect(() => {
     if (liveToasts.length > 0) {
-      const latest = liveToasts[liveToasts.length - 1];
+      const latestObj = liveToasts[liveToasts.length - 1];
+      const latestText = typeof latestObj === "string" ? latestObj : latestObj.text;
+      
       setToastHistory(prev => {
-        if (prev.includes(latest)) return prev;
-        return [latest, ...prev].slice(0, 40); // cap history at 40 alerts
+        if (prev.includes(latestText)) return prev;
+        return [latestText, ...prev].slice(0, 40); // cap history at 40 alerts
       });
 
       // Beautiful Auto-Close after 6 seconds
       const dismissTimer = setTimeout(() => {
-        setLiveToasts(prev => prev.filter(t => t !== latest));
+        setLiveToasts(prev => prev.filter(t => (typeof t === "string" ? t : t.text) !== latestText));
       }, 6000);
       return () => clearTimeout(dismissTimer);
     }
@@ -396,10 +475,32 @@ export default function App() {
         }
       }
 
-      // Consultations (DMG): #/consultations/C...
-      if (hash.startsWith("#/consultations")) {
+      // Consultations (DMG): #/consultations, #/dmg/consultation/:id, #/dmg?patientId=...
+      if (hash.startsWith("#/consultations") || hash.startsWith("#/dmg") || hash.startsWith("#/consultation")) {
         setActiveTab("dmg");
+        setVirtualTabs(prev => {
+          if (!prev.some(t => t.id === "dmg")) {
+            return [...prev, { id: "dmg", label: "Consultations (DMG)", tabType: "dmg" }];
+          }
+          return prev;
+        });
         setActiveVirtualTabId("dmg");
+
+        // Parse patientId from hash
+        let matchedPatientId = null;
+        if (hash.includes("patientId=")) {
+          matchedPatientId = hash.split("patientId=")[1]?.split("&")[0];
+        } else {
+          const parts = hash.split("/");
+          if (parts.length >= 4 && parts[1] === "dmg" && parts[2] === "consultation") {
+            matchedPatientId = parts[3];
+          } else if (parts.length >= 3 && parts[1] === "consultation") {
+            matchedPatientId = parts[2];
+          }
+        }
+        if (matchedPatientId) {
+          setDmgInitialPatientId(matchedPatientId);
+        }
       }
 
       // Factures: #/factures/FAC...
@@ -869,17 +970,13 @@ export default function App() {
     switch (targetTab) {
       case "dashboard":
         return (
-          <DashboardView 
-            patientsList={patients}
-            bedList={dashboardBeds}
-            stockList={dashboardStock}
-            invoiceList={dashboardInvoices}
-            triageList={dashboardTriages}
-            onOpenConsultation={() => spawnVirtualTab("dmg", "Consultations (DMG)")}
-            clinicName={activeClinic.name}
-            clinicSlogan={activeClinic.logoUrl || "MédiSahel Enterprise - Système Intelligent Hospitalier"}
-            accentColor={activeClinic.themeColor}
-            onTabRedirect={(tabId, label) => spawnVirtualTab(tabId, label)}
+          <DmgModuleView
+            token={token}
+            patients={patients}
+            currentUser={currentUser}
+            clinicThemeColor={activeClinic.themeColor}
+            initialPatientId={dmgInitialPatientId}
+            onClearInitialPatientId={() => setDmgInitialPatientId(null)}
           />
         );
       case "patients":
@@ -927,6 +1024,8 @@ export default function App() {
             patients={patients}
             currentUser={currentUser}
             clinicThemeColor={activeClinic.themeColor}
+            initialPatientId={dmgInitialPatientId}
+            onClearInitialPatientId={() => setDmgInitialPatientId(null)}
           />
         );
       case "nursing":
@@ -1106,7 +1205,24 @@ export default function App() {
         onSelectTab={(tab, arg) => {
           setActiveTab(tab);
           if (arg) {
-            if (arg.isPatient && arg.patientName) {
+            if (arg.isConsultationRedirect && arg.id) {
+              setDmgInitialPatientId(arg.id);
+              // Ensure virtual tab is spawned and selected
+              setVirtualTabs(prev => {
+                if (!prev.some(t => t.id === "dmg")) {
+                  return [...prev, { id: "dmg", label: "Consultations (DMG)", tabType: "dmg" }];
+                }
+                return prev;
+              });
+              setActiveVirtualTabId("dmg");
+              triggerToast("🩺 Redirection : Chargement du dossier patient pour la consultation DMG");
+            } else if (arg.isPatient && arg.patientName) {
+              if (arg.id) {
+                const matched = patients.find(p => p.id === arg.id);
+                if (matched) {
+                  setSelectedDmePatient(matched);
+                }
+              }
               triggerToast(`🔍 Recherche globale : Accès direct au dossier de "${arg.patientName}"`);
             } else if (arg.isInvoice && arg.invoiceId) {
               triggerToast(`🧾 Recherche globale : Accès direct à la transaction "${arg.invoiceId}"`);
@@ -1631,19 +1747,33 @@ export default function App() {
               </div>
             )}
 
-            {liveToasts.map((toast, index) => (
-              <div 
-                key={index} 
-                className="p-2.5 bg-teal-950/95 backdrop-blur text-teal-50 text-[9px] font-sans font-bold rounded-lg shadow-md flex items-center justify-between border border-teal-800 animate-slide-in pointer-events-auto"
-                style={{ animation: 'slideIn 0.2s ease-out' }}
-              >
-                <div className="flex items-center space-x-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-450 shrink-0 animate-pulse" />
-                  <span className="leading-tight text-white">{toast}</span>
+            {liveToasts.map((toast, index) => {
+              const text = typeof toast === "string" ? toast : toast.text;
+              const hasPatientId = typeof toast !== "string" && toast.patientId;
+              return (
+                <div 
+                  key={index} 
+                  onClick={() => {
+                    if (typeof toast !== "string" && toast.patientId) {
+                      handleNotificationRedirect(toast.patientId);
+                    }
+                  }}
+                  className={`p-2.5 bg-teal-950/95 backdrop-blur text-teal-50 text-[9px] font-sans font-bold rounded-lg shadow-md flex items-center justify-between border border-teal-800 animate-slide-in pointer-events-auto transition-all ${
+                    hasPatientId ? "cursor-pointer hover:bg-teal-900 ring-1 ring-teal-400/50" : ""
+                  }`}
+                  style={{ animation: 'slideIn 0.2s ease-out' }}
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-450 shrink-0 animate-pulse" />
+                    <span className="leading-tight text-white">
+                      {text}
+                      {hasPatientId && <span className="block text-[7px] text-teal-300 font-extrabold mt-0.5 cursor-pointer underline">➡️ Cliquer pour Ouvrir la Consultation</span>}
+                    </span>
+                  </div>
+                  <span className="text-[7px] uppercase bg-teal-900 px-1.5 ml-2.5 rounded font-mono font-black shrink-0">Live</span>
                 </div>
-                <span className="text-[7px] uppercase bg-teal-900 px-1.5 ml-2.5 rounded font-mono font-black shrink-0">Live</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </main>
       </div>

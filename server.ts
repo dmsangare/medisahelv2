@@ -734,6 +734,283 @@ app.post("/api/patients/check-duplicate", authenticate, async (req: any, res) =>
   }
 });
 
+// GET /api/search/global
+app.get("/api/search/global", authenticate, async (req: any, res) => {
+  const queryParam = (req.query.query || "").toString().trim().toLowerCase();
+  const searchType = (req.query.type || "all").toString().trim().toLowerCase();
+  const dateParam = (req.query.date || "all").toString().trim().toLowerCase();
+  const statusParam = (req.query.status || "all").toString().trim().toLowerCase();
+  const doctorParam = (req.query.doctor || "").toString().trim().toLowerCase();
+
+  try {
+    // 1. Fetch all datasets parallelly
+    const [patients, medicalRecords, transactions, labTests, documents, prescriptions, hospitalizations] = await Promise.all([
+      db.patients.findMany(),
+      db.medicalRecords.findMany(),
+      db.transactions.findMany(),
+      db.labTests.findMany(),
+      db.documents.findMany(),
+      db.pharmacy.getPrescriptions() || [],
+      db.hospitalizations.findMany()
+    ]);
+
+    // Create a fast patient lookup map to link records with patients
+    const patientMap = new Map<string, any>();
+    patients.forEach((p: any) => {
+      patientMap.set(p.id, {
+        id: p.id,
+        name: `${p.firstName} ${p.lastName}`.toUpperCase(),
+        nationalId: p.nationalId,
+        phone: p.phone,
+        email: p.email,
+        fullObj: p
+      });
+    });
+
+    const results: any[] = [];
+
+    // Helper to check date range match
+    const matchDateRange = (itemDate: string) => {
+      if (dateParam === "all") return true;
+      if (!itemDate) return false;
+      const d = new Date(itemDate);
+      if (isNaN(d.getTime())) {
+        if (dateParam.length === 10) return itemDate.startsWith(dateParam);
+        return true;
+      }
+      const now = new Date();
+      const diffMs = now.getTime() - d.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      if (dateParam === "today") {
+        return d.toDateString() === now.toDateString();
+      } else if (dateParam === "week") {
+        return diffDays <= 7;
+      } else if (dateParam === "month") {
+        return diffDays <= 30;
+      } else if (dateParam === "year") {
+        return diffDays <= 365;
+      } else if (dateParam.length === 10) {
+        return itemDate.startsWith(dateParam);
+      }
+      return true;
+    };
+
+    // Helper to match text query against multiple fields
+    const matchesQuery = (texts: (string | undefined | null)[]) => {
+      if (!queryParam) return true;
+      return texts.some(t => t?.toLowerCase().includes(queryParam));
+    };
+
+    // Helper to check doctor match
+    const matchesDoctor = (itemDoctor: string) => {
+      if (!doctorParam) return true;
+      return itemDoctor?.toLowerCase().includes(doctorParam);
+    };
+
+    // 2. Map Patients
+    if (searchType === "all" || searchType === "patient") {
+      patients.forEach((p: any) => {
+        const patName = `${p.firstName} ${p.lastName}`.toUpperCase();
+        if (matchesQuery([patName, p.id, p.nationalId, p.phone, p.email, p.address, p.bloodType, p.allergies, p.ethnie])) {
+          results.push({
+            id: p.id,
+            type: "patient",
+            category: "Patient (DME)",
+            patientId: p.id,
+            patient: patName,
+            date: p.createdAt || p.dateOfBirth,
+            doctor: "N/A",
+            number: p.nationalId || `PAT-${p.id.substring(0, 6).toUpperCase()}`,
+            title: patName,
+            details: `Téléphone: ${p.phone || "N/A"} • Sexe: ${p.gender || "N/A"} • Groupe: ${p.bloodType || "N/A"}`,
+            status: p.status === "ACTIVE" ? "Actif" : "Inactif",
+            link: "/dme",
+            item: p
+          });
+        }
+      });
+    }
+
+    // 3. Map Medical Records (Consultations)
+    if (searchType === "all" || searchType === "consultation") {
+      medicalRecords.forEach((r: any) => {
+        const pat = patientMap.get(r.patientId);
+        const patName = pat ? pat.name : "Inconnu";
+        const docName = r.doctorName || "Médecin Spécialiste";
+        
+        if (statusParam !== "all") {
+          if (statusParam === "pending") return;
+        }
+
+        if (matchDateRange(r.date) && matchesDoctor(docName) &&
+            matchesQuery([docName, r.symptoms, r.diagnosis, r.prescription, r.notes, r.id, patName, r.patientId, pat?.nationalId, pat?.phone])) {
+          results.push({
+            id: r.id,
+            type: "consultation",
+            category: "Consultation",
+            patientId: r.patientId,
+            patient: patName,
+            date: r.date,
+            doctor: docName,
+            number: r.id.startsWith("record-") ? `CS-${r.id.substring(7, 13).toUpperCase()}` : r.id,
+            title: r.diagnosis || "Consultation Médicale",
+            details: `Symptômes: ${r.symptoms || "N/A"} • Diagnostic: ${r.diagnosis || "N/A"}`,
+            status: "Validé",
+            link: "/dmg",
+            item: r
+          });
+        }
+      });
+    }
+
+    // 4. Map Transactions (Factures)
+    if (searchType === "all" || searchType === "facture") {
+      transactions.forEach((t: any) => {
+        const pat = patientMap.get(t.patientId);
+        const patName = pat ? pat.name : "Client Anonyme / Comptoir";
+        const docName = t.cashierName || "Caissier Principal";
+
+        if (statusParam !== "all") {
+          if (statusParam === "paid" && t.status !== "PAID") return;
+          if (statusParam === "pending" && t.status !== "UNPAID") return;
+        }
+
+        if (matchDateRange(t.date) &&
+            matchesQuery([docName, t.description, t.id, t.status, t.paymentMethod, t.amount?.toString(), patName, t.patientId, pat?.nationalId])) {
+          results.push({
+            id: t.id,
+            type: "facture",
+            category: "Facture",
+            patientId: t.patientId,
+            patient: patName,
+            date: t.date,
+            doctor: docName,
+            number: t.id.startsWith("tx-") ? `FAC-${t.id.substring(3, 9).toUpperCase()}` : t.id,
+            title: t.description || "Facturation médicale",
+            details: `Montant: ${t.amount || 0} FCFA • Mode de paiement: ${t.paymentMethod || "N/A"}`,
+            status: t.status === "PAID" ? "Payé" : "Non payé",
+            link: "/billing",
+            item: t
+          });
+        }
+      });
+    }
+
+    // 5. Map Lab Tests (Analyses)
+    if (searchType === "all" || searchType === "analyse") {
+      labTests.forEach((l: any) => {
+        const pat = patientMap.get(l.patientId);
+        const patName = pat ? pat.name : "Inconnu";
+        const docName = l.requestedBy || "Médecin prescripteur";
+
+        if (statusParam !== "all") {
+          if (statusParam === "pending" && l.status !== "PENDING") return;
+          if (statusParam === "validated" && l.status !== "COMPLETED") return;
+        }
+
+        if (matchDateRange(l.date) && matchesDoctor(docName) &&
+            matchesQuery([docName, l.testName, l.category, l.results, l.status, l.performedBy, l.id, patName, l.patientId, pat?.nationalId])) {
+          results.push({
+            id: l.id,
+            type: "analyse",
+            category: "Analyse Labo",
+            patientId: l.patientId,
+            patient: patName,
+            date: l.date,
+            doctor: docName,
+            number: l.id.startsWith("lab-") ? `LAB-${l.id.substring(4, 10).toUpperCase()}` : l.id,
+            title: l.testName || "Examen biologique",
+            details: `Catégorie: ${l.category || "N/A"} • Résultats: ${l.results || "En attente"}`,
+            status: l.status === "COMPLETED" ? "Complété" : "En attente",
+            link: "/lab",
+            item: l
+          });
+        }
+      });
+    }
+
+    // 6. Map Documents (GECD Archive & Courriers etc.)
+    if (searchType === "all" || searchType === "document" || searchType === "imagerie") {
+      documents.forEach((d: any) => {
+        const pat = patientMap.get(d.ownerId);
+        const patName = pat ? pat.name : d.ownerName || "Administrateur";
+        
+        if (searchType === "imagerie") {
+          const isImagery = (d.category || "").toLowerCase().includes("image") || (d.title || "").toLowerCase().includes("radio") || (d.title || "").toLowerCase().includes("imagerie");
+          if (!isImagery) return;
+        }
+
+        if (matchDateRange(d.createdAt) &&
+            matchesQuery([d.title, d.description, d.fileType, d.category, d.size, d.id, patName, d.ownerId])) {
+          results.push({
+            id: d.id,
+            type: searchType === "imagerie" ? "imagerie" : "document",
+            category: d.category === "MEDICAL" ? "Document DME" : d.category === "ADMINISTRATIVE" ? "Administratif" : d.category || "GECD",
+            patientId: pat ? pat.id : undefined,
+            patient: patName,
+            date: d.createdAt,
+            doctor: d.ownerName || "N/A",
+            number: d.id.startsWith("doc-") ? `DOC-${d.id.substring(4, 10).toUpperCase()}` : d.id,
+            title: d.title || "Document numérisé",
+            details: `Description: ${d.description || "N/A"} • Type d'élément: ${d.fileType || "PDF"} • Taille: ${d.size || "N/A"}`,
+            status: "Archivé",
+            link: "/documents",
+            item: d
+          });
+        }
+      });
+    }
+
+    // 7. Map Pharmacy Prescriptions (Ordonnances)
+    if (searchType === "all" || searchType === "ordonnance") {
+      prescriptions.forEach((p: any) => {
+        const pat = patientMap.get(p.patientId);
+        const patName = p.patientName || (pat ? pat.name : "Client Inconnu");
+        const docName = p.doctorName || "Médecin prescripteur";
+
+        if (statusParam !== "all") {
+          if (statusParam === "pending" && p.status !== "PENDING") return;
+          if (statusParam === "validated" && p.status !== "DELIVERED" && p.status !== "DISPENSED" && p.status !== "VALIDATED") return;
+        }
+
+        const medStrings = (p.medications || []).map((m: any) => `${m.name} ${m.dosage || ""}`).join(", ");
+
+        if (matchDateRange(p.date) && matchesDoctor(docName) &&
+            matchesQuery([docName, p.prescriptionText, medStrings, p.status, p.id, patName, p.patientId])) {
+          results.push({
+            id: p.id,
+            type: "ordonnance",
+            category: "Ordonnance",
+            patientId: p.patientId,
+            patient: patName,
+            date: p.date,
+            doctor: docName,
+            number: p.id.startsWith("ph-presc-") ? `ORD-${p.id.substring(9, 15).toUpperCase()}` : p.id,
+            title: p.prescriptionText || "Ordonnance de médicaments",
+            details: `Médicaments prescrits: ${medStrings || "N/A"}`,
+            status: p.status === "PENDING" ? "En attente" : p.status === "DISPENSED" ? "Dispensé" : "Validé",
+            link: "/pharmacy_sales",
+            item: p
+          });
+        }
+      });
+    }
+
+    // Return results sorted chronologically (most recent first)
+    results.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da;
+    });
+
+    res.json(results);
+  } catch (err: any) {
+    console.error("Error in global search backend route:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 2. Fetch full consolidated electronic medical records containing all hospitalizations, lab, billing, and consultations
 app.get("/api/patients/:id/full-dme", authenticate, async (req: any, res) => {
   const patientId = req.params.id;

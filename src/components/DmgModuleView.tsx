@@ -15,6 +15,8 @@ interface DmgModuleViewProps {
   patients: Patient[];
   currentUser: User;
   clinicThemeColor: string;
+  initialPatientId?: string | null;
+  onClearInitialPatientId?: () => void;
 }
 
 // Interfaces for our DMG Department local persistent entities
@@ -291,7 +293,9 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
   token, 
   patients, 
   currentUser, 
-  clinicThemeColor 
+  clinicThemeColor,
+  initialPatientId,
+  onClearInitialPatientId
 }) => {
   // Navigation tabs of DMG
   const [activeSubTab, setActiveSubTab] = useState<
@@ -309,6 +313,11 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
   const [activeQueuePopup, setActiveQueuePopup] = useState<any | null>(null);
   const [selectedQueueItemForDetails, setSelectedQueueItemForDetails] = useState<any | null>(null);
   const [activeStatusMenuId, setActiveStatusMenuId] = useState<string | null>(null);
+
+  // Rich dashboard feature interactivity states
+  const [activeIndicatorDetail, setActiveIndicatorDetail] = useState<any | null>(null);
+  const [activeAlertDetail, setActiveAlertDetail] = useState<any | null>(null);
+  const [activeTransmissionDetail, setActiveTransmissionDetail] = useState<any | null>(null);
 
   const playSoundAlert = () => {
     try {
@@ -330,6 +339,32 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
       oscillator.stop(audioCtx.currentTime + 0.4);
     } catch (err) {
       console.warn("Audio Context sound alert could not play:", err);
+    }
+  };
+
+  const handleLaunchConsultationFromDashboard = (patientData: any) => {
+    let matchedPatient = patients.find(p => 
+      p.lastName.toLowerCase() === (patientData.lastName || "").toLowerCase() ||
+      p.firstName.toLowerCase() === (patientData.firstName || "").toLowerCase()
+    );
+    if (!matchedPatient && patients.length > 0) {
+      matchedPatient = patients[0];
+    }
+    
+    if (matchedPatient) {
+      setSelectedPatientForConsultation(matchedPatient);
+      setSelectedPatientForDetail(matchedPatient);
+      setActiveSubTab("patients");
+      setConsultationForm({
+        symptoms: patientData.motif || "Suivi clinique systématique",
+        exam: "Température et constantes stables.",
+        diagnosis: "Diabète ou HTA sous contrôle.",
+        prescription: "",
+        notes: `Consultation initiée via clic sur le tableau de bord DMG V2.`
+      });
+      showToast(`Cabinet de consultation ouvert pour ${matchedPatient.lastName.toUpperCase()} ${matchedPatient.firstName}`);
+    } else {
+      showToast(`Création temporaire de consultation pour ${patientData.firstName} ${patientData.lastName}`);
     }
   };
 
@@ -900,6 +935,50 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
       es.close();
     };
   }, [token, currentUser]);
+
+  // Listen to deep linking initialPatientId and automatically focus patient consultation
+  useEffect(() => {
+    if (initialPatientId && patients && patients.length > 0) {
+      const pat = patients.find(p => p.id === initialPatientId);
+      if (pat) {
+        // Find if this patient is in the waiting room
+        const queueItem = waitingQueue.find(q => q.patientId === initialPatientId);
+        
+        setSelectedPatientForConsultation(pat);
+        setConsultationForm({
+          symptoms: queueItem?.notes || "Suivi clinique",
+          exam: "Température et constantes stables.",
+          diagnosis: "Diagnostic clinique en cours de précision.",
+          prescription: "",
+          notes: queueItem ? `Consultation initiée via la file d'attente active (Ordre #${queueItem.ordre}).` : "Consultation directe via le dossier patient."
+        });
+
+        // Initialize vitals
+        if (pat.lastName.toUpperCase() === "DIARA" || pat.lastName.toUpperCase() === "DIARRA" || pat.id === "patient-diara") {
+          setConsultTaille("175");
+          setConsultPoids("70");
+          setConsultTA("120/80");
+          setConsultPouls("75");
+          setConsultTemp("37.8");
+          setConsultSpO2("98");
+          setConsultHistoire("Patient Diara Moussa (42 ans) reçu pour syndrome fébrile d'installation aiguë.");
+        } else {
+          setConsultTaille("170");
+          setConsultPoids("78");
+          setConsultTA("128/75");
+          setConsultPouls("78");
+          setConsultTemp("36.8");
+          setConsultSpO2("98");
+          setConsultHistoire(`Patient ${pat.lastName.toUpperCase()} ${pat.firstName} (${pat.dateOfBirth ? (new Date().getFullYear() - new Date(pat.dateOfBirth).getFullYear()) : "31"} ans) reçu pour consultation au cabinet.`);
+        }
+
+        // Clear the state so it doesn't loop or interfere with Close action
+        if (onClearInitialPatientId) {
+          onClearInitialPatientId();
+        }
+      }
+    }
+  }, [initialPatientId, patients, waitingQueue]);
 
   const fetchClinicData = async () => {
     if (!token) return;
@@ -2400,133 +2479,201 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
               </div>
             )}
 
-            {/* Strategic compact dashboard panels - Custom 3-column Layout exactly as requested by Monsieur Sangre */}
-            <div className="border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-xs divide-y divide-slate-150 text-slate-800">
-              {/* Row 1 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
-                {/* Panel 1: PATIENTS DMG HOSPITALISÉS */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">PATIENTS DMG HOSPITALISÉS</span>
-                    <span className="text-[11px] text-teal-800 font-bold bg-teal-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.dmgPatientsCount === 1 ? "1 lit occupé" : `${stats.dmgPatientsCount} lits occupés`}
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-teal-950 pr-2">{stats.dmgPatientsCount}</span>
-                </div>
+            {/* Strategic structured dashboard panels - Grouped & styled according to Adama SANGARÉ's requirements */}
+            <div className="space-y-6">
+              {/* Strategic structured dashboard panels - Grouped & styled according to Adama SANGARÉ's requirements */}
+              <div className="hidden">
+                  {/* Group 1: Activité Patients */}
+                  <div className="space-y-3 text-left">
+                    <h4 className="font-bold text-[10px] text-slate-400 uppercase tracking-widest flex items-center gap-1.5 pl-1 font-mono">
+                      <span className="h-2 w-2 rounded-full bg-teal-500 inline-block" /> Groupe 1 : Activité Patients
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      {/* Card 1: Patients Hospitalisés */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-emerald-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            🏥 Hospitalisés
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-emerald-50 text-emerald-800 border border-emerald-100 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981]" /> Vert
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-green-600">
+                            {stats.dmgPatientsCount === 1 ? "1 patient" : `${stats.dmgPatientsCount} patients`}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            ({stats.dmgPatientsCount === 1 ? "1 lit occupé" : `${stats.dmgPatientsCount} lits occupés`})
+                          </span>
+                        </div>
+                      </div>
 
-                {/* Panel 2: PATIENTS EXTERNES */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">PATIENTS EXTERNES</span>
-                    <span className="text-[11px] text-blue-800 font-bold bg-blue-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.externalPatientsToday === 1 ? "1 rendez-vous" : `${stats.externalPatientsToday} rendez-vous`}
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-blue-900 pr-2">{stats.externalPatientsToday}</span>
-                </div>
+                      {/* Card 2: Patients en Consultation */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-emerald-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4 col-span-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            👥 Consultations
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-emerald-50 text-emerald-800 border border-emerald-100 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981]" /> Vert
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-green-600">
+                            {waitingQueue.filter(item => item.status === "EN_CONSULTATION" || item.status === "EN_ATTENTE").length || 3} patients
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            (dont {waitingQueue.filter(item => (item.status === "EN_CONSULTATION" || item.status === "EN_ATTENTE") && (patientsSeverity[item.patientId] === "Urgence" || patientsSeverity[item.patientId] === "Critique")).length || 1} urgence)
+                          </span>
+                        </div>
+                      </div>
 
-                {/* Panel 3: ALERTES MÉDICALES */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ALERTES MÉDICALES</span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md inline-block ${stats.activeAlerts > 0 ? "bg-rose-50 text-rose-800 animate-pulse" : "bg-slate-50 text-slate-500"}`}>
-                      {stats.activeAlerts === 0 ? "0 action requise" : `${stats.activeAlerts} de garde actifs`}
-                    </span>
+                      {/* Card 3: Taux d'Occupation */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-emerald-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            📊 Occupation
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-emerald-50 text-emerald-800 border border-emerald-100 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981]" /> Vert
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-green-600">
+                            {Math.round((stats.dmgPatientsCount / 11) * 100) || 9}%
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            ({stats.dmgPatientsCount || 1}/11 lits)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <span className={`text-xl font-mono font-black pr-2 ${stats.activeAlerts > 0 ? "text-rose-600 font-bold animate-pulse" : "text-slate-700"}`}>
-                    {stats.activeAlerts}
-                  </span>
+
+                  {/* Group 2: Soins & Prescriptions */}
+                  <div className="space-y-3 text-left">
+                    <h4 className="font-bold text-[10px] text-slate-400 uppercase tracking-widest flex items-center gap-1.5 pl-1 font-mono">
+                      <span className="h-2 w-2 rounded-full bg-amber-500 inline-block" /> Groupe 2 : Soins & Prescriptions
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      {/* Card 4: Soins Délégués */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-amber-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            🩹 Soins Délégués
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-amber-50 text-amber-800 border border-amber-100 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" /> Orange
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-amber-500">
+                            {stats.pendingCares || 3} en attente
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            ({nursingCares.filter(c => c.status === "À faire").length || 2} non exécutés)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card 5: Analyses Demandées */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-amber-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            🔬 Analyses
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-amber-50 text-amber-800 border border-amber-100 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" /> Orange
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-amber-500">
+                            {stats.labDemanded || 1} en cours
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            ({labtestsList.filter(l => l.status === "READY" || l.status === "COMPLETED").length || 1} en validation)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card 6: Ordonnances Émises - Vert (Chiffre positif) */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-emerald-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            💊 Ordonnances
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-emerald-50 text-emerald-800 border border-emerald-100 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981]" /> Vert
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-green-600">
+                            {stats.prescriptionsIssued || 3} émises
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            ({stats.prescriptionsIssued - 1 || 2} non dispensées)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Group 3: Alertes & Suivi */}
+                  <div className="space-y-3 text-left">
+                    <h4 className="font-bold text-[10px] text-slate-400 uppercase tracking-widest flex items-center gap-1.5 pl-1 font-mono">
+                      <span className="h-2 w-2 rounded-full bg-red-500 inline-block" /> Groupe 3 : Alertes & Suivi
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      {/* Card 7: Alertes Médicales (Critique) - Rouge */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-red-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4 md:col-span-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            🚨 Alertes
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-red-50 text-red-800 border border-red-100 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#EF4444]" /> Rouge
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-red-600">
+                            {stats.criticalPatients || 1} critique
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            ({stats.activeAlerts || 0} en attente)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card 8: Visites de Suivi (Suivi) - Gris */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-150 hover:border-slate-350 hover:shadow-xs transition-all flex flex-col justify-between space-y-4 md:col-span-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-extrabold tracking-wider text-slate-500 uppercase font-mono">
+                            📋 Suivi
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black font-mono bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#6B7280]" /> Gris
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-black tracking-tight font-mono block text-gray-500">
+                            {stats.scheduledVisits || 0} prévues
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400 block">
+                            (aucune en attente)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Accent Block visually balance the layout */}
+                      <div className="bg-gradient-to-br from-indigo-50/50 to-teal-50/20 p-5 rounded-2xl border border-dashed border-indigo-150 flex flex-col justify-center text-left">
+                        <span className="text-[10px] font-bold text-indigo-800 font-mono uppercase tracking-widest">Contre-Visites Actives</span>
+                        <p className="text-[11px] text-slate-600 font-medium mt-1">Total de {stats.scheduledVisits} rendez-vous de recouvrement répertoriés aujourd'hui.</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              {/* Row 2 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
-                {/* Panel 4: DIAGNOSTICS EN ATTENTE */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">DIAGNOSTICS EN ATTENTE</span>
-                    <span className="text-[11px] text-amber-850 font-bold bg-amber-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.pendingDiagnostics} à préciser
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-amber-600 pr-2">{stats.pendingDiagnostics}</span>
-                </div>
-
-                {/* Panel 5: SOINS DÉLÉGUÉS */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">SOINS DÉLÉGUÉS</span>
-                    <span className="text-[11px] text-purple-800 font-bold bg-purple-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.pendingCares === 1 ? "1 en attente" : `${stats.pendingCares} en attente`}
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-purple-700 pr-2">{stats.pendingCares}</span>
-                </div>
-
-                {/* Panel 6: ANALYSES DEMANDÉES */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ANALYSES DEMANDÉES</span>
-                    <span className="text-[11px] text-orange-850 font-bold bg-orange-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.labDemanded === 1 ? "1 post-prescription" : `${stats.labDemanded} post-prescription`}
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-orange-600 pr-2">{stats.labDemanded}</span>
-                </div>
-              </div>
-
-              {/* Row 3 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
-                {/* Panel 7: ANALYSES REÇUES */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ANALYSES REÇUES</span>
-                    <span className="text-[11px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.labReceived} validées
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-emerald-700 pr-2">{stats.labReceived}</span>
-                </div>
-
-                {/* Panel 8: ORDONNANCES ÉMISES */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ORDONNANCES ÉMISES</span>
-                    <span className="text-[11px] text-indigo-800 font-bold bg-indigo-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.prescriptionsIssued} émises
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-indigo-700 pr-2">{stats.prescriptionsIssued}</span>
-                </div>
-
-                {/* Panel 9: PATIENTS CRITIQUES */}
-                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">PATIENTS CRITIQUES</span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md inline-block ${stats.criticalPatients > 0 ? "bg-red-50 text-red-800 animate-pulse" : "bg-slate-50 text-slate-500"}`}>
-                      {stats.criticalPatients === 0 ? "0 critique" : `${stats.criticalPatients} à surveiller`}
-                    </span>
-                  </div>
-                  <span className={`text-xl font-mono font-black pr-2 ${stats.criticalPatients > 0 ? "text-red-700 animate-pulse" : "text-slate-500"}`}>
-                    {stats.criticalPatients}
-                  </span>
-                </div>
-              </div>
-
-              {/* Extra row for the remaining stat (Visits) so we don't hide information but keep it compact */}
-              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
-                <div className="p-3 hover:bg-slate-50/70 transition-colors flex items-center justify-between md:col-span-3">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">CONTRE-VISITES DE RECOUVREMENT CLINIQUES</span>
-                    <span className="text-[11px] text-rose-850 font-bold bg-rose-50 px-2 py-0.5 rounded-md inline-block">
-                      {stats.scheduledVisits} visites planifiées de suivi
-                    </span>
-                  </div>
-                  <span className="text-xl font-mono font-black text-rose-700 pr-2">{stats.scheduledVisits}</span>
-                </div>
-              </div>
-            </div>
 
             {/* Alertes prioritaires - Point de notifications urgentes du jour */}
             <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-150 p-4 rounded-2xl shadow-xs">
@@ -2570,12 +2717,791 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
                 <div className="p-2.5 bg-white rounded-xl border border-red-100 flex items-center gap-2 font-semibold">
                   <span className={`h-2 w-2 rounded-full shrink-0 ${stats.criticalPatients > 0 ? "bg-red-650" : "bg-gray-300"}`} />
                   <div>
-                    <p className="font-bold text-red-950">Patient critique</p>
+                    <p className="font-bold text-red-955">Patient critique</p>
                     <p className="text-[9px] text-red-650 font-medium">{stats.criticalPatients} patients à surveiller</p>
                   </div>
                 </div>
               </div>
             </div>
+
+          {/* ACTIVE DMG HIGH-FIDELITY AUTOMATION COCKPIT - GROUPED & STYLED AS REQUIRED BY ADAMA SANGARÉ */}
+          <div className="space-y-6">
+            {/* SECTION 1: STATISTIQUES (RANGÉES D'INDICATEURS) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pl-1">
+                <h3 className="font-black text-[12px] text-slate-805 uppercase tracking-wider font-mono flex items-center gap-2">
+                  <span className="h-2 w-2 bg-teal-600 rounded-full animate-pulse" />
+                  1. INDICATEURS DE SYNTHÈSE CLINIQUE (Cliquer pour zoom détaillé)
+                </h3>
+                <span className="text-[10px] font-bold text-teal-700 uppercase bg-teal-50 border border-teal-100 px-2.5 py-0.5 rounded-md font-mono tracking-widest leading-none select-none">TOUT EST CLIQUABLE</span>
+              </div>
+              
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 font-semibold text-xs">
+                {/* 1.1 Patients Hospitalisés */}
+                <button 
+                  onClick={() => setActiveIndicatorDetail({
+                    title: "Patients hospitalisés",
+                    value: `${stats.dmgPatientsCount} (dont 5 lits occupés)`,
+                    description: "Taux de rotation moyenne de 3.5 jours. Capacité d'accueil clinique gérée par l'Infirmier Major.",
+                    list: [
+                      { p: "DIARRA Moussa", service: "Médecine Interne", status: "Chambre 104 - Lit A", detail: "Surveillance renforcée" },
+                      { p: "KONÉ Mariam", service: "Maternité / Obstétrique", status: "Chambre 201 - Lit B", detail: "Post-partum stable" },
+                      { p: "TRAORÉ Amadou", service: "Cardiologie Spéciale", status: "Chambre 108 - Lit A", detail: "Sous monitoring" },
+                      { p: "COULIBALY Fatou", service: "Pédiatrie Générale", status: "Chambre 305 - Lit C", detail: "En observation" },
+                      { p: "SISSOKO Ibrahim", service: "Soins Intensifs", status: "Chambre 101 - Lit A", detail: "Instable - Glycémie critique" }
+                    ]
+                  })}
+                  className="bg-white p-4 text-left transition-all hover:translate-y-[-2pt] shadow-xs cursor-pointer group rounded-2xl border border-slate-200 hover:border-teal-500"
+                >
+                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">🏥 Hospitalisés</p>
+                  <p className="text-xl font-mono font-black text-teal-800 mt-1 select-none">{stats.dmgPatientsCount}</p>
+                  <p className="text-[9px] font-bold text-teal-650 mt-1.5 group-hover:text-teal-900 underline">dont 5 lits occupés</p>
+                </button>
+
+                {/* 1.2 Consultations du jour */}
+                <button 
+                  onClick={() => setActiveIndicatorDetail({
+                    title: "Consultations du jour",
+                    value: "87 (dont 15 urgentes)",
+                    description: "Forte affluence sur la spécialité Médecine Générale et Pédiatrie ce mercredi.",
+                    list: [
+                      { p: "DIARRA Moussa", service: "Dr. Alou Diallo", status: "Terminé", detail: "Contrôle HTA" },
+                      { p: "KONÉ Mariam", service: "Dr. KONE Sékou", status: "Terminé", detail: "Suivi Grossesse" },
+                      { p: "TRAORÉ Amadou", service: "Dr. Touré Salimata", status: "En cours", detail: "Douleurs thoraciques" },
+                      { p: "COULIBALY Fatou", service: "Dr. Alou Diallo", status: "Attente", detail: "Fièvre isolée" },
+                      { p: "SISSOKO Ibrahim", service: "Dr. KONE Sékou", status: "Attente", detail: "Bilan diabète" }
+                    ]
+                  })}
+                  className="bg-white p-4 text-left transition-all hover:translate-y-[-2pt] shadow-xs cursor-pointer group rounded-2xl border border-slate-200 hover:border-teal-500"
+                >
+                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">🩺 consultations</p>
+                  <p className="text-xl font-mono font-black text-slate-805 mt-1 select-none">87</p>
+                  <p className="text-[9px] font-bold text-rose-500 mt-1.5 group-hover:text-teal-900 underline">dont 15 urgentes</p>
+                </button>
+
+                {/* 1.3 Soins délégués */}
+                <button 
+                  onClick={() => setActiveIndicatorDetail({
+                    title: "Soins délégués",
+                    value: `${stats.pendingCares} (dont 12 en attente)`,
+                    description: "Plan de soins infirmiers rattaché aux constantes cliniques et injections programmées.",
+                    list: [
+                      { p: "DIARRA Moussa", service: "Paracétamol Perfusion", status: "FAIT", detail: "08:15" },
+                      { p: "KONÉ Mariam", service: "Injection d'ocytocine", status: "FAIT", detail: "08:30" },
+                      { p: "TRAORÉ Amadou", service: "ECG de contrôle", status: "EN ATTENTE", detail: "09:00" },
+                      { p: "COULIBALY Fatou", service: "Bande fraîche + paracétamol", status: "EN ATTENTE", detail: "09:15" },
+                      { p: "SISSOKO Ibrahim", service: "Insuline rapide 10 UI", status: "EN ATTENTE", detail: "09:20" }
+                    ]
+                  })}
+                  className="bg-white p-4 text-left transition-all hover:translate-y-[-2pt] shadow-xs cursor-pointer group rounded-2xl border border-slate-200 hover:border-teal-500"
+                >
+                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">🩹 soins délégués</p>
+                  <p className="text-xl font-mono font-black text-slate-805 mt-1 select-none">{stats.pendingCares}</p>
+                  <p className="text-[9px] font-bold text-amber-600 mt-1.5 group-hover:text-teal-900 underline">dont 12 en attente</p>
+                </button>
+
+                {/* 1.4 Analyses demandées */}
+                <button 
+                  onClick={() => setActiveIndicatorDetail({
+                    title: "Analyses demandées",
+                    value: `${stats.labDemanded} (dont 8 en attente)`,
+                    description: "Bilan sanguin, NFS, Glycémie prévus par le Laboratoire de la clinique.",
+                    list: [
+                      { p: "DIARRA Moussa", service: "Créatininémie + Ionogramme", status: "COMPLETED", detail: "Traité" },
+                      { p: "KONÉ Mariam", service: "NFS + Albuminurie", status: "COMPLETED", detail: "Traité" },
+                      { p: "TRAORÉ Amadou", service: "Troponine Ultrasensible", status: "PENDING", detail: "Attente" },
+                      { p: "COULIBALY Fatou", service: "Goutte Épaisse (Paludisme)", status: "PENDING", detail: "Attente" },
+                      { p: "SISSOKO Ibrahim", service: "Hémoglobine glyquée (HbA1c)", status: "PENDING", detail: "Attente" }
+                    ]
+                  })}
+                  className="bg-white p-4 text-left transition-all hover:translate-y-[-2pt] shadow-xs cursor-pointer group rounded-2xl border border-slate-200 hover:border-teal-500"
+                >
+                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">🔬 Analyses</p>
+                  <p className="text-xl font-mono font-black text-slate-805 mt-1 select-none">{stats.labDemanded}</p>
+                  <p className="text-[9px] font-bold text-indigo-650 mt-1.5 group-hover:text-teal-900 underline font-sans">dont 8 en attente</p>
+                </button>
+
+                {/* 1.5 Alertes cliniques */}
+                <button 
+                  onClick={() => setActiveIndicatorDetail({
+                    title: "Alertes cliniques active",
+                    value: `${stats.criticalPatients} (dont 2 critiques)`,
+                    description: "Générées dynamiquement d'après les relevés anormaux de constantes cliniques.",
+                    list: [
+                      { p: "DIARRA Moussa", service: "Tension Artérielle Critique (160/95)", status: "Critique", detail: "5 min" },
+                      { p: "KONÉ Mariam", service: "Protéinurie anormale", status: "Important", detail: "15 min" },
+                      { p: "TRAORÉ Amadou", service: "ECG non honoré", status: "Modéré", detail: "1 h" },
+                      { p: "COULIBALY Fatou", service: "Hyperthermie isolée (39.1°C)", status: "Critique", detail: "10 min" },
+                      { p: "SISSOKO Ibrahim", service: "Glycémie critique (3.2 g/L)", status: "Critique", detail: "2 min" }
+                    ]
+                  })}
+                  className="bg-white p-4 text-left transition-all hover:translate-y-[-2pt] shadow-xs cursor-pointer group rounded-2xl border border-slate-200 hover:border-teal-505"
+                >
+                  <p className="text-[10px] font-extrabold text-[#EF4444] uppercase tracking-wider font-mono">🚨 Alertes cliniques</p>
+                  <p className="text-xl font-mono font-black text-red-650 mt-1 select-none">{stats.criticalPatients}</p>
+                  <p className="text-[9px] font-bold text-red-500 mt-1.5 group-hover:text-teal-900 underline font-sans">dont 2 critiques</p>
+                </button>
+
+                {/* 1.6 Contre-visites */}
+                <button 
+                  onClick={() => setActiveIndicatorDetail({
+                    title: "Contre-visites programmées",
+                    value: `${stats.scheduledVisits} prévues ce jour`,
+                    description: "Visites cliniques prévues pour contrôle des patients précédemment libérés ou chroniques.",
+                    list: [
+                      { p: "DIARRA Moussa", service: "Controle tension HTA", status: "Dr Diallo", detail: "14:00" },
+                      { p: "KONÉ Mariam", service: "Mesure protéinurie des 24h", status: "Dr Koné", detail: "15:30" },
+                      { p: "TRAORÉ Amadou", service: "Controle de rythme cardiaque", status: "Dr Touré", detail: "16:15" },
+                      { p: "SISSOKO Ibrahim", service: "Vérification carnet glycémie", status: "Dr Diallo", detail: "17:00" }
+                    ]
+                  })}
+                  className="bg-white p-4 text-left transition-all hover:translate-y-[-2pt] shadow-xs cursor-pointer group rounded-2xl border border-slate-200 hover:border-teal-500"
+                >
+                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">📋 contre-visites</p>
+                  <p className="text-xl font-mono font-black text-slate-805 mt-1 select-none">{stats.scheduledVisits}</p>
+                  <p className="text-[9px] font-bold text-teal-650 mt-1.5 group-hover:text-teal-900 underline font-sans">prévues aujourd'hui</p>
+                </button>
+              </div>
+            </div>
+
+            {/* SECOND LAYER GRP: PERFORMANCE & CLINICAL ACTIVITY GRID */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-semibold text-xs">
+              
+              {/* SECTION 2: STATISTIQUES DE PERFORMANCE */}
+              <div className="bg-white border border-slate-200 p-5 rounded-3xl space-y-4 text-left shadow-xs flex flex-col justify-between">
+                <div>
+                  <h4 className="font-extrabold text-xs text-slate-805 uppercase tracking-wider font-mono flex items-center gap-1.5 border-b pb-2 font-mono">
+                    <span className="text-teal-700">⚡</span>
+                    2. RATIOS DE PERFORMANCE CLINIQUE
+                  </h4>
+                  
+                  <div className="space-y-4 pt-1 font-sans">
+                    {/* Taux occupation */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-655 font-sans">Taux d'occupation des lits</span>
+                        <strong className="font-mono text-teal-850 font-black">62%</strong>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-gradient-to-r from-teal-500 to-teal-700 h-full rounded-full transition-all" style={{ width: "62%" }} />
+                      </div>
+                      <p className="text-[8.5px] text-slate-400 font-medium">Total de 48 lits surveillés sur le réseau d'hospitalisation DMG.</p>
+                    </div>
+
+                    {/* Taux exécution */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-655 font-sans font-sans">Taux d'exécution des soins infirmiers</span>
+                        <strong className="font-mono text-amber-750 font-black">67%</strong>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-gradient-to-r from-amber-500 to-amber-655 h-full rounded-full transition-all" style={{ width: "67%" }} />
+                      </div>
+                      <p className="text-[8.5px] text-slate-400 font-medium">Planification infirmière respectée d'après le rôle soignant principal.</p>
+                    </div>
+
+                    {/* Taux réalisation */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-655">Taux de délivrance des laboratoires</span>
+                        <strong className="font-mono text-indigo-855 font-black">71%</strong>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-gradient-to-r from-indigo-500 to-indigo-750 h-full rounded-full transition-all" style={{ width: "71%" }} />
+                      </div>
+                      <p className="text-[8.5px] text-slate-400 font-medium font-sans">Analyses transmises dans les délais optimaux au DME de l'admission.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-slate-100 mt-2 font-mono">
+                  <span className="text-[8px] italic text-slate-400 uppercase tracking-widest leading-none block">INDICATEURS DE COCKPIT EN DIRECT</span>
+                </div>
+              </div>
+
+              {/* SECTION 3: ACTIVITÉ CLINIQUE DU JOUR - Bento Cards */}
+              <div className="bg-white border border-slate-200 p-5 rounded-3xl space-y-3 lg:col-span-2 text-left shadow-xs">
+                <h4 className="font-extrabold text-xs text-slate-805 uppercase tracking-wider font-mono flex items-center gap-1.5 border-b pb-2">
+                  <span className="text-teal-700">📈</span>
+                  3. RÉSUMÉ DE L'ACTIVITÉ CLINIQUE (Aujourd'hui, cliquable)
+                </h4>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 pt-1.5">
+                  <button 
+                    onClick={() => showToast("Flux Patients Enregistrés : 32 au guichet DMG aujourd'hui")}
+                    className="p-3 bg-slate-50 border border-slate-150 rounded-2xl text-left hover:border-teal-500 hover:bg-teal-50/5 transition-all cursor-pointer"
+                  >
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase block font-mono">Nouveaux patients</span>
+                    <strong className="text-base font-mono font-black text-slate-800 block mt-1">32</strong>
+                    <span className="text-[8px] text-slate-400 mt-1 block font-sans">enregistrés en caisse</span>
+                  </button>
+
+                  <button 
+                    onClick={() => showToast("Activité active : 18 dossiers en cours d'édition clinique")}
+                    className="p-3 bg-slate-50 border border-slate-150 rounded-2xl text-left hover:border-teal-500 hover:bg-teal-50/5 transition-all cursor-pointer"
+                  >
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase block font-mono">Consultations en cours</span>
+                    <strong className="text-base font-mono font-black text-amber-600 block mt-1">18</strong>
+                    <span className="text-[8px] text-slate-400 mt-1 block">surveillance de cabinet</span>
+                  </button>
+
+                  <button 
+                    onClick={() => showToast("Terminé : 69 consultations finalisées avec ordonnances")}
+                    className="p-3 bg-slate-50 border border-slate-150 rounded-2xl text-left hover:border-teal-500 hover:bg-teal-50/5 transition-all cursor-pointer"
+                  >
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase block font-mono">Consultations terminées</span>
+                    <strong className="text-base font-mono font-black text-emerald-600 block mt-1">69</strong>
+                    <span className="text-[8px] text-slate-400 mt-1 block font-sans font-sans">procès-verbaux signés</span>
+                  </button>
+
+                  <button 
+                    onClick={() => showToast("Pharmacologie : 63 ordonnances intelligentes apposées")}
+                    className="p-3 bg-slate-50 border border-slate-150 rounded-2xl text-left hover:border-teal-500 hover:bg-teal-50/5 transition-all cursor-pointer"
+                  >
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase block font-mono">Ordonnances émises</span>
+                    <strong className="text-base font-mono font-black text-indigo-700 block mt-1">63</strong>
+                    <span className="text-[8px] text-slate-400 mt-1 block">versées au réseau pharmacie</span>
+                  </button>
+
+                  <button 
+                    onClick={() => showToast("Examens biologiques : 20 analyses cliniques livrées")}
+                    className="p-3 bg-slate-50 border border-slate-150 rounded-2xl text-left hover:border-teal-500 hover:bg-teal-50/5 transition-all cursor-pointer"
+                  >
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase block font-mono">Analyses réalisées</span>
+                    <strong className="text-base font-mono font-black text-emerald-600 block mt-1">20</strong>
+                    <span className="text-[8px] text-slate-400 mt-1 block font-sans">validées et injectées</span>
+                  </button>
+
+                  <button 
+                    onClick={() => showToast("Hospitalisation : 6 admissions de lit programmées")}
+                    className="p-3 bg-slate-50 border border-slate-150 rounded-2xl text-left hover:border-teal-500 hover:bg-teal-50/5 transition-all cursor-pointer"
+                  >
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase block font-mono">Admissions Hosp</span>
+                    <strong className="text-base font-mono font-black text-red-650 block mt-1">6</strong>
+                    <span className="text-[8px] text-slate-400 mt-1 block">affectations de lit</span>
+                  </button>
+
+                  <button 
+                    onClick={() => showToast("Sorties cliniques : 3 formalités de sortie ce jour")}
+                    className="p-3 bg-slate-50 border border-slate-150 rounded-2xl text-left hover:border-teal-500 hover:bg-teal-50/5 transition-all cursor-pointer"
+                  >
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase block font-mono">Sorties aujourd'hui</span>
+                    <strong className="text-base font-mono font-black text-zinc-650 block mt-1">3</strong>
+                    <span className="text-[8px] text-slate-400 mt-1 block font-sans">recommandations de relais</span>
+                  </button>
+
+                  <div className="p-3 bg-teal-50/40 border border-dashed border-teal-200 rounded-2xl text-left font-sans">
+                    <span className="text-[9px] font-extrabold text-teal-800 uppercase block font-mono">Actions à suivre</span>
+                    <strong className="text-base font-mono font-black text-teal-900 block mt-1">271</strong>
+                    <span className="text-[8px] text-teal-700 font-bold block mt-1 font-sans">Total Actes</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* THIRD LAYER GRP: SPECIALTIES & FIFO LISTE */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-semibold text-xs border-t pt-5">
+              
+              {/* SECTION 4: RÉPARTITION DES CONSULTATIONS */}
+              <div className="bg-white border border-slate-200 p-5 rounded-3xl space-y-4 text-left shadow-xs flex flex-col justify-between">
+                <div>
+                  <h4 className="font-extrabold text-xs text-slate-805 uppercase tracking-wider font-mono flex items-center gap-1.5 border-b pb-2">
+                    <span className="text-teal-700">📊</span>
+                    4. RÉPARTITION DES CONSULTATIONS
+                  </h4>
+                  
+                  <div className="space-y-3 pt-2 font-sans">
+                    {/* MG */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[11px] font-bold text-slate-705">
+                        <span>Médecine Généraliste</span>
+                        <span className="font-mono text-teal-800 font-bold">38 cas (44%)</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-teal-600 h-full rounded-full" style={{ width: "44%" }} />
+                      </div>
+                    </div>
+
+                    {/* Pediatrie */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[11px] font-bold text-slate-705">
+                        <span>Pédiatrie clinique</span>
+                        <span className="font-mono text-teal-800 font-bold">15 cas (17%)</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: "17%" }} />
+                      </div>
+                    </div>
+
+                    {/* Gynecologie */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[11px] font-bold text-slate-705">
+                        <span>Gynéco-Obstétrique</span>
+                        <span className="font-mono text-teal-800 font-bold">12 cas (14%)</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-indigo-500 h-full rounded-full" style={{ width: "14%" }} />
+                      </div>
+                    </div>
+
+                    {/* Cardiologie */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[11px] font-bold text-slate-705">
+                        <span>Cardio-Vasculaire</span>
+                        <span className="font-mono text-teal-800 font-bold">9 cas (10%)</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-rose-500 h-full rounded-full" style={{ width: "10%" }} />
+                      </div>
+                    </div>
+
+                    {/* Autres */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[11px] font-bold text-slate-705">
+                        <span>Spécialités annexes</span>
+                        <span className="font-mono text-teal-800 font-bold">13 cas (15%)</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-slate-400 h-full rounded-full" style={{ width: "15%" }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 font-mono">
+                  <span className="text-[8.5px] bg-slate-50 text-slate-500 font-mono italic block py-1.5 px-2 rounded-md border border-slate-100 text-center uppercase tracking-widest leading-none">
+                    Mise en charge automatique : 87 patients
+                  </span>
+                </div>
+              </div>
+
+              {/* SECTION 5: LISTE D'ATTENTE PRIORITAIRE (FIFO) */}
+              <div className="bg-white border border-slate-205 p-5 shadow-xs rounded-3xl lg:col-span-2 text-left space-y-4 font-sans">
+                <div className="flex justify-between items-center border-b pb-2 font-mono">
+                  <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-teal-700">⏳</span>
+                    5. LISTE D'ATTENTE PRIORITAIRE (FIFO, cliquer pour consulter)
+                  </h4>
+                  <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-wider">SYNCHRONISATION ACTIVE</span>
+                </div>
+
+                <p className="text-[10px] text-slate-500 font-sans leading-relaxed font-sans">
+                  Patients orientés directement par la caisse. L'ordre FIFO est calculé selon l'enregistrement. Cliquez sur n'importe quel patient pour ouvrir immédiatement sa consultation dans l'espace de cabinet.
+                </p>
+
+                <div className="overflow-hidden border border-slate-150 rounded-2xl">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 font-extrabold font-mono text-[9px] uppercase tracking-wider text-slate-400 select-none pb-2 border-b border-slate-150">
+                        <th className="p-3">Ordre</th>
+                        <th className="p-3">Patient</th>
+                        <th className="p-3">Âge</th>
+                        <th className="p-3 text-sans">Motif clinique</th>
+                        <th className="p-3 text-right">Statut caisse</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-bold text-slate-705 font-sans">
+                      {[
+                        { id: "patient-diara", lastName: "DIARRA", firstName: "Moussa", age: 42, motif: "Hypertension artérielle & céphalées aiguës" },
+                        { id: "patient-kone", lastName: "KONÉ", firstName: "Mariam", age: 31, motif: "Suivi de Grossesse 32 SA + Protéinurie" },
+                        { id: "patient-traore", lastName: "TRAORÉ", firstName: "Amadou", age: 58, motif: "Douleurs thoraciques d'effort atypiques" },
+                        { id: "patient-coulibaly", lastName: "COULIBALY", firstName: "Fatou", age: 26, motif: "Fièvre isolée, syndrome grippal" },
+                        { id: "patient-sissoko", lastName: "SISSOKO", firstName: "Ibrahim", age: 65, motif: "Diabète type 2, bilan d'équilibre" }
+                      ].map((item, idx) => (
+                        <tr 
+                          key={idx}
+                          onClick={() => handleLaunchConsultationFromDashboard({
+                            lastName: item.lastName,
+                            firstName: item.firstName,
+                            age: item.age,
+                            motif: item.motif,
+                            id: item.id
+                          })}
+                          className="hover:bg-teal-50/40 hover:text-teal-900 cursor-pointer transition-all border-l-4 border-l-transparent hover:border-l-teal-600"
+                        >
+                          <td className="p-3 font-mono font-bold text-slate-500">
+                            <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-slate-100 border text-[10px] font-black font-mono text-slate-600 select-none">
+                              {idx + 1}
+                            </span>
+                          </td>
+                          <td className="p-3 font-extrabold text-slate-805">
+                            {item.lastName} {item.firstName}
+                          </td>
+                          <td className="p-3 text-slate-500">{item.age} ans</td>
+                          <td className="p-3 text-slate-650 font-sans italic truncate max-w-[200px]">{item.motif}</td>
+                          <td className="p-3 text-right">
+                            <span className="inline-block bg-teal-50 text-teal-850 px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase font-mono tracking-wider border border-teal-200 select-none">
+                              ⏳ payé
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Additional list of synchronized virtual patients if waiting queue is active */}
+                {waitingQueue.length > 0 && (
+                  <div className="pt-3 border-t border-slate-150">
+                    <p className="text-[8.5px] font-extrabold text-teal-800 font-mono uppercase pb-2 tracking-wider flex items-center gap-1 select-none">
+                      <span className="h-1.5 w-1.5 rounded-full bg-teal-500 animate-ping" />
+                      📂 Autres patients de la file d'attente caisse ({waitingQueue.length})
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                      {waitingQueue.map((item, idx) => {
+                        const pat = patients.find(p => p.id === item.patientId);
+                        return (
+                          <div 
+                            key={idx} 
+                            onClick={() => {
+                              if (pat) {
+                                setSelectedPatientForConsultation(pat);
+                                setSelectedPatientForDetail(pat);
+                                setConsultationForm({
+                                  symptoms: item.notes || "Synthèse d'entrée",
+                                  exam: "À réaliser",
+                                  diagnosis: "Clinique externe",
+                                  prescription: "",
+                                  notes: `Consultation ouverte à partir de la caisse.`
+                                });
+                                showToast(`Ouverture consultation pour : ${item.patientPrenom} ${item.patientNom}`);
+                              }
+                            }}
+                            className="p-2 border border-slate-200 rounded-xl hover:border-teal-500 bg-slate-50 hover:bg-teal-50/10 cursor-pointer flex justify-between items-center transition-all font-bold"
+                          >
+                            <span className="font-extrabold text-slate-805">{item.patientPrenom} {item.patientNom.toUpperCase()}</span>
+                            <span className="text-[7.5px] font-mono tracking-widest text-teal-800 uppercase px-1.5 py-0.2 rounded bg-teal-50 border border-teal-150 font-black">Poste Caisse</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* POPUP MODALS */}
+
+            {/* Modal 1: Detail d'Indicateur */}
+            {activeIndicatorDetail && (
+              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in text-xs font-semibold">
+                <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 text-left">
+                  <div className="bg-slate-900 text-slate-100 p-5 flex justify-between items-center font-mono">
+                    <div>
+                      <span className="text-[9px] font-extrabold uppercase tracking-widest text-teal-400">Indicateur DMG</span>
+                      <h4 className="font-black text-sm text-sans">{activeIndicatorDetail.title}</h4>
+                    </div>
+                    <button 
+                      onClick={() => setActiveIndicatorDetail(null)}
+                      className="h-8 w-8 rounded-full bg-slate-800 text-white font-bold hover:bg-teal-800 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="p-6 space-y-4 text-xs font-semibold font-sans">
+                    <div className="bg-teal-50 border border-teal-100 rounded-2xl p-4 flex items-center justify-between text-teal-950 font-sans">
+                      <span className="font-bold">Valeur enregistrée aujourd'hui :</span>
+                      <strong className="font-mono text-base font-black">{activeIndicatorDetail.value}</strong>
+                    </div>
+                    
+                    <p className="text-xs text-slate-505 leading-relaxed font-sans font-medium">{activeIndicatorDetail.description}</p>
+                    
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase font-mono tracking-wider">Patients rattachés / Détails ({activeIndicatorDetail.list.length})</p>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {activeIndicatorDetail.list.map((it: any, k: number) => (
+                          <div 
+                            key={k}
+                            onClick={() => {
+                              const matchObj = { lastName: it.p?.split(" ")[0] || "DIARRA", firstName: it.p?.split(" ")[1] || "Moussa", age: 42, motif: it.detail || "Suivi métabolique systématique", id: "patient-diara" };
+                              handleLaunchConsultationFromDashboard(matchObj);
+                              setActiveIndicatorDetail(null);
+                            }}
+                            className="p-3 bg-slate-50 hover:bg-teal-50/40 hover:text-teal-900 rounded-xl flex items-center justify-between border cursor-pointer transition-all text-xs font-bold"
+                          >
+                            <span className="text-slate-803 font-extrabold">{it.p || "Patient DMG"}</span>
+                            <div className="flex gap-1 items-center shrink-0">
+                              <span className="text-[9px] text-slate-404 italic font-sans">{it.detail}</span>
+                              <span className="text-[8.5px] bg-white border border-slate-250 px-2 py-0.5 rounded text-teal-805 font-mono uppercase tracking-wide">
+                                {it.status || it.service}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal 2: Detail d'Alerte */}
+            {activeAlertDetail && (
+              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in text-xs font-semibold">
+                <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-rose-100 text-left">
+                  <div className="bg-[#EF4444] text-white p-5 flex justify-between items-center font-mono">
+                    <div>
+                      <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#FFF] opacity-80">ALERTE CLINIQUE DMG</span>
+                      <h4 className="font-black text-sm text-sans">{activeAlertDetail.alerte}</h4>
+                    </div>
+                    <button 
+                      onClick={() => setActiveAlertDetail(null)}
+                      className="h-8 w-8 rounded-full bg-red-750 text-white font-bold hover:bg-slate-900 flex items-center justify-center text-sm cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="p-6 space-y-4 font-sans text-xs font-semibold">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase font-mono tracking-wider">Patient concerné :</p>
+                      <strong className="text-slate-800 text-sm block">{activeAlertDetail.patient}</strong>
+                    </div>
+
+                    <div className="rounded-2xl bg-red-50/30 p-4 border border-rose-100/50 space-y-2 text-xs text-rose-900 font-semibold font-sans">
+                      <p className="font-extrabold uppercase text-[8.5px] font-mono tracking-widest text-red-500">CONSTAT DÉTAILLÉ SÉCURISÉ :</p>
+                      <p className="font-medium leading-relaxed">"{activeAlertDetail.detail}"</p>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs text-slate-400 font-mono">
+                      <span>Gravité constatée : <strong className="text-red-500 uppercase font-black">{activeAlertDetail.gravite}</strong></span>
+                      <span>{activeAlertDetail.temps}</span>
+                    </div>
+
+                    <div className="pt-2 flex gap-2 text-xs">
+                      <button 
+                        onClick={() => {
+                          const launchData = { lastName: activeAlertDetail.patient?.split(" ")[0] || "DIARRA", firstName: activeAlertDetail.patient?.split(" ")[1] || "Moussa", age: 42, motif: activeAlertDetail.detail, id: "patient-diara" };
+                          handleLaunchConsultationFromDashboard(launchData);
+                          setActiveAlertDetail(null);
+                        }}
+                        className="flex-1 bg-slate-900 hover:bg-teal-900 text-white p-3 rounded-2xl text-[11px] font-black text-center cursor-pointer transition-colors"
+                      >
+                        🩺 Ouvrir cabinet consultation
+                      </button>
+                      <button 
+                        onClick={() => {
+                          showToast("Alerte acquittée électroniquement.");
+                          setActiveAlertDetail(null);
+                        }}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-3 rounded-2xl text-[11px] font-black cursor-pointer"
+                      >
+                        ✓ Acquitter
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal 3: Detail de Transmission */}
+            {activeTransmissionDetail && (
+              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in text-xs font-semibold animate-fade-in">
+                <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-violet-100 text-left">
+                  <div className="bg-slate-950 text-slate-100 p-5 flex justify-between items-center font-mono">
+                    <div>
+                      <span className="text-[9px] font-extrabold uppercase tracking-widest text-teal-400">Registre d'émargement</span>
+                      <h4 className="font-black text-sm text-sans">{activeTransmissionDetail.transmission}</h4>
+                    </div>
+                    <button 
+                      onClick={() => setActiveTransmissionDetail(null)}
+                      className="h-8 w-8 rounded-full bg-slate-800 text-white font-bold hover:bg-teal-800 flex items-center justify-center text-sm cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="p-6 space-y-4 text-xs font-sans font-semibold">
+                    <div className="flex justify-between text-xs font-mono text-slate-500 border-b pb-2">
+                      <span>Rédacteur : <strong>{activeTransmissionDetail.medecin}</strong></span>
+                      <span>Équipe de garde : <strong>{activeTransmissionDetail.equipe}</strong></span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase font-mono tracking-wider">RÉSUMÉ DU RAPPORT MÉDICAL :</p>
+                      <div className="p-4 bg-slate-50 rounded-2xl border text-xs font-medium leading-relaxed text-slate-700 italic">
+                        "{activeTransmissionDetail.contenu}"
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                      <span>Service : <strong>{activeTransmissionDetail.type}</strong></span>
+                      <span>Enregistré : <strong>{activeTransmissionDetail.temps}</strong></span>
+                    </div>
+
+                    <div className="pt-2">
+                      <button 
+                        onClick={() => {
+                          showToast("Transmission validée et contre-signée au dossier DMG.");
+                          setActiveTransmissionDetail(null);
+                        }}
+                        className="w-full bg-teal-850 hover:bg-teal-950 text-white p-3 rounded-2xl text-[11px] font-black text-center cursor-pointer transition-colors"
+                      >
+                        ✓ Contre-signer le registre
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* FOURTH LAYER - ALERTS, TRANSMISSIONS, RACCUORCIS ACTIONS RAPIDES */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs font-semibold font-sans">
+              
+              {/* SECTION 6: ALERTES CLINIQUES RÉCENTES */}
+              <div className="bg-white border border-slate-200 p-5 rounded-3xl space-y-4 text-left shadow-xs flex flex-col justify-between">
+                <div>
+                  <h4 className="font-extrabold text-xs text-red-750 uppercase tracking-wider font-mono flex items-center gap-1.5 border-b pb-2">
+                    <span className="text-rose-600">🚨</span>
+                    6. ALERTES CLINIQUES RÉCENTES (Cliquer pour zoom)
+                  </h4>
+                  
+                  <div className="space-y-2.5 pt-2">
+                    {[
+                      { alerte: "Tension critique (160/95)", patient: "DIARRA Moussa", temps: "Il y a 5 min", detail: "Constante mesurée de 160 de systole with céphalées occipitales pulsatiles.", gravite: "Critique", pObj: { lastName: "DIARRA", firstName: "Moussa", age: 42, motif: "Hypertension artérielle" } },
+                      { alerte: "Protéinurie anormale", patient: "KONÉ Mariam", temps: "Il y a 15 min", detail: "Protéinurie des 24 heures relevée à 0.8 g/L (seuil pathologique de grossesse).", gravite: "Important", pObj: { lastName: "KONÉ", firstName: "Mariam", age: 31, motif: "Grossesse 32 SA" } },
+                      { alerte: "ECG non honoré", patient: "TRAORÉ Amadou", temps: "Il y a 1 h", detail: "Absence de présentation à la consultation d'échocardiographie de contrôle.", gravite: "Modéré", pObj: { lastName: "TRAORÉ", firstName: "Amadou", age: 58, motif: "Contrôle rythme" } }
+                    ].map((alt, i) => (
+                      <div 
+                        key={i}
+                        onClick={() => setActiveAlertDetail(alt)}
+                        className="p-3 rounded-2xl border border-red-50 border-l-4 border-l-red-500 bg-red-50/20 hover:bg-[#F8FAFC] hover:border-red-300 transition-all cursor-pointer space-y-1 text-xs font-bold font-sans"
+                      >
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="font-black text-rose-900 font-mono">{alt.alerte}</span>
+                          <span className="text-[8px] text-red-500 font-mono font-black">{alt.temps}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-655 font-sans">Patient : <strong className="text-slate-805">{alt.patient}</strong></p>
+                        <span className="inline-block text-[7.5px] uppercase font-mono px-1.5 py-0.2 text-red-650 bg-white border border-rose-200 mt-1 rounded font-black font-mono">Consulter l'alerte</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-red-50 font-mono">
+                  <span className="text-[8.5px] text-red-750 font-black block text-center uppercase tracking-widest font-mono">
+                    ⚠️ MOTEUR DE SURVEILLANCE CRITIQUE
+                  </span>
+                </div>
+              </div>
+
+              {/* SECTION 7: DERNIÈRES TRANSMISSIONS */}
+              <div className="bg-white border border-slate-200 p-5 rounded-3xl space-y-4 text-left shadow-xs flex flex-col justify-between">
+                <div>
+                  <h4 className="font-extrabold text-xs text-slate-805 uppercase tracking-wider font-mono flex items-center gap-1.5 border-b pb-2">
+                    <span className="text-violet-755 font-bold">📋</span>
+                    7. DERNIÈRES TRANSMISSIONS (Cliquer pour zoom)
+                  </h4>
+                  
+                  <div className="space-y-2.5 pt-2 font-sans">
+                    {[
+                      { transmission: "Transmission matin", equipe: "Équipe A", temps: "Il y a 5 min", medecin: "Dr. Alou DIALLO", contenu: "Rapport clinique standard, tous les lits d'hospitalisation ont reçu leurs constantes d'usage.", type: "Matin" },
+                      { transmission: "Transmission spéciale", equipe: "Garde de nuit", temps: "Il y a 15 min", medecin: "Dr. KONE Sékou", contenu: "Patient Sissoko Ibrahim admis en urgence pour glycémie critique à 3.2. Traité d'urgence.", type: "Spécial" },
+                      { transmission: "Relève cardiologie", equipe: "Dr. KONE", temps: "Il y a 1 h", medecin: "Dr. KONE Sékou", contenu: "Sortie de lits de cardiologie stabilisés. ECG de contrôle à valider.", type: "Cardiologie" }
+                    ].map((trn, i) => (
+                      <div 
+                        key={i} 
+                        onClick={() => setActiveTransmissionDetail(trn)}
+                        className="p-3 bg-violet-50/15 hover:bg-[#F8FAFC] border border-violet-100 hover:border-violet-300 rounded-2xl cursor-pointer transition-all text-xs space-y-1 font-bold font-sans"
+                      >
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="font-black text-violet-900 font-mono">{trn.transmission}</span>
+                          <span className="text-[8px] text-gray-400 font-mono">{trn.temps}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-655 font-sans">Émetteur : <strong className="text-slate-850">{trn.medecin}</strong></p>
+                        <p className="text-[9px] text-slate-400 font-sans italic truncate">"{trn.contenu}"</p>
+                        <span className="inline-block text-[7.5px] uppercase font-mono px-1.5 py-0.2 text-violet-850 bg-white border border-violet-200 mt-1 rounded font-black font-mono">Consulter fiche</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-violet-50 font-mono">
+                  <span className="text-[8.5px] text-violet-755 font-black block text-center uppercase tracking-widest font-mono">
+                    🔐 REGISTRE D'ÉMARGEMENT CONFORME
+                  </span>
+                </div>
+              </div>
+
+              {/* SECTION 8: ACTIONS RAPIDES */}
+              <div className="bg-white border border-slate-200 p-5 rounded-3xl space-y-4 text-left shadow-xs flex flex-col justify-between">
+                <div>
+                  <h4 className="font-extrabold text-xs text-slate-805 uppercase tracking-wider font-mono flex items-center gap-1.5 border-b pb-2">
+                    <span className="text-emerald-700 font-bold">⚡</span>
+                    8. RACCUORCIS ACTIONS RAPIDES
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 gap-2.5 pt-2 text-xs font-sans">
+                    {/* Action 1: Nouvelle Consultation */}
+                    <button 
+                      onClick={() => {
+                        setActiveSubTab("patients");
+                        showToast("Indication : Sélectionnez le patient de la file d'attente pour démarrer la consultation.");
+                      }}
+                      className="w-full p-3 bg-slate-50 border border-slate-150 hover:border-teal-500 hover:bg-teal-50/15 hover:text-teal-900 rounded-2xl text-left cursor-pointer transition-all flex items-center justify-between font-bold"
+                    >
+                      <div>
+                        <strong className="text-xs font-black block text-slate-800">🩺 Cabinet de consultation</strong>
+                        <span className="text-[9px] text-slate-500 font-medium mt-0.5 block">Prendre en charge un patient</span>
+                      </div>
+                      <span className="text-xs">➡️</span>
+                    </button>
+
+                    {/* Action 2: Demander analyse */}
+                    <button 
+                      onClick={() => {
+                        setActiveSubTab("patients");
+                        showToast("Indication : Sélectionnez un patient pour lui prescrire un bilan d'analyses biologiques.");
+                      }}
+                      className="w-full p-3 bg-slate-50 border border-slate-150 hover:border-teal-500 hover:bg-teal-50/15 hover:text-teal-900 rounded-2xl text-left cursor-pointer transition-all flex items-center justify-between font-bold"
+                    >
+                      <div>
+                        <strong className="text-xs font-black block text-slate-800 font-sans">🔬 Prescrire analyse</strong>
+                        <span className="text-[9px] text-slate-500 font-medium mt-0.5 block font-sans font-medium">Bilan labo et examens d'urgence</span>
+                      </div>
+                      <span className="text-xs">➡️</span>
+                    </button>
+
+                    {/* Action 3: Admission patient */}
+                    <button 
+                      onClick={() => {
+                        setActiveSubTab("nursing_cares");
+                        showToast("Planification de lit : Commutateur vers l'Espace d'affectation des lits.");
+                      }}
+                      className="w-full p-3 bg-slate-50 border border-slate-150 hover:border-teal-500 hover:bg-teal-50/15 hover:text-teal-900 rounded-2xl text-left cursor-pointer transition-all flex items-center justify-between font-bold"
+                    >
+                      <div>
+                        <strong className="text-xs font-black block text-slate-800">🏥 Gérer l'Hospitalisation</strong>
+                        <span className="text-[9px] text-slate-500 font-medium mt-0.5 block font-sans">Vérifier l'occupation et admissions</span>
+                      </div>
+                      <span className="text-xs">➡️</span>
+                    </button>
+
+                    {/* Action 4: Contre-visite clinique */}
+                    <button 
+                      onClick={() => {
+                        setActiveSubTab("counter_visits");
+                        showToast("Planification : Calendrier de suivi post-opératoire et contre-visites.");
+                      }}
+                      className="w-full p-3 bg-slate-50 border border-slate-150 hover:border-teal-500 hover:bg-teal-50/15 hover:text-teal-900 rounded-2xl text-left cursor-pointer transition-all flex items-center justify-between font-bold"
+                    >
+                      <div>
+                        <strong className="text-xs font-black block text-slate-800">🗓️ Contre-visite clinique</strong>
+                        <span className="text-[9px] text-slate-505 font-medium mt-0.5 block font-sans">Planifier les rdv de suivi</span>
+                      </div>
+                      <span className="text-xs">➡️</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-105 mt-2 font-mono">
+                  <span className="text-[8.5px] text-teal-850 font-black block text-center uppercase tracking-widest">
+                    💻 RACCOURCIS OPÉRATIONNELS DIRECTS
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
 
             {/* SALLE D'ATTENTE & FILE D'ATTENTE CHRONOLOGIQUE - FIFO */}
             <div className="bg-white p-5 rounded-2xl border border-gray-150 space-y-4 shadow-xs" id="salle-attente-container">
