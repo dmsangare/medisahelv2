@@ -14,6 +14,13 @@ interface HeaderProps {
   activeTab: string;
   darkMode: boolean;
   onToggleDarkMode: () => void;
+  toastHistory?: string[];
+  onClearHistory?: () => void;
+  onSelectTab?: (tab: string, arg?: any) => void;
+  onDepartClick?: () => void;
+  hasCheckedInToday?: boolean;
+  hasCheckedOutToday?: boolean;
+  patientsList?: any[];
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -22,38 +29,81 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout, 
   activeTab, 
   darkMode, 
-  onToggleDarkMode 
+  onToggleDarkMode,
+  toastHistory = [],
+  onClearHistory,
+  onSelectTab,
+  onDepartClick,
+  hasCheckedInToday = false,
+  hasCheckedOutToday = false,
+  patientsList = []
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
   const [showEmailMenu, setShowEmailMenu] = useState(false);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
 
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
   const searchRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
 
-  // Sample medical search engine index (Point 1 Header Executif search)
+  const handleResultClick = (item: any) => {
+    setShowSearchResults(false);
+    setSearchQuery("");
+    if (onSelectTab) {
+      if (item.type === "patient") {
+        onSelectTab("dme", { patientName: item.label, isPatient: true, id: item.id });
+      } else if (item.type === "invoice") {
+        onSelectTab("billing", { invoiceId: item.label, isInvoice: true });
+      } else if (item.type === "drug") {
+        onSelectTab("pharmacy_sales", { itemName: item.label, isItem: true });
+      } else if (item.type === "lab") {
+        onSelectTab("lab", { focusAnalyses: true });
+      } else if (item.type === "appointment") {
+        onSelectTab("appointments", { focusCalendar: true });
+      } else {
+        onSelectTab("dashboard");
+      }
+    }
+  };
+
+  // Build the search database dynamically combining static and dynamic patients (Point 3)
   const searchDatabase = [
-    { type: "patient", category: "Patient", label: "Diarra Amadou", info: "N° Dossier: DME-849 • Mopti", desc: "Patient admis - Surveillance réanimation" },
-    { type: "patient", category: "Patient", label: "Sacko Mariam", info: "N° Dossier: DME-1122 • Sevaré", desc: "Hospitalisée - Chambre 402, Lit B" },
-    { type: "patient", category: "Patient", label: "Keita Souleymane", info: "N° Dossier: DME-9481 • Bandiagara", desc: "Consultation externe - Tension 14/8" },
+    ...patientsList.map(p => ({
+      id: p.id,
+      type: "patient",
+      category: "Patient (DME)",
+      label: `${p.firstName} ${p.lastName}`.toUpperCase(),
+      info: `NID: ${p.nationalId || "N/A"} • Tél: ${p.phone || "N/A"}`,
+      desc: `Sexe: ${p.gender || "N/A"} • Ethnie: ${p.ethnie || "N/A"} • Dossier Actif`
+    })),
+    { type: "patient", category: "Patient", label: "DIARRA AMADOU", info: "N° Dossier: DME-849 • Mopti", desc: "Patient admis - Surveillance réanimation" },
+    { type: "patient", category: "Patient", label: "SACKO MARIAM", info: "N° Dossier: DME-1122 • Sevaré", desc: "Hospitalisée - Chambre 402, Lit B" },
     { type: "invoice", category: "Facture", label: "FAC-2026-1049", info: "Montant: 45 000 FCFA • Tiers payant: CNAM", desc: "Facturation - Assurance Mutuelle active" },
     { type: "invoice", category: "Facture", label: "FAC-2026-1050", info: "Montant: 12 500 FCFA • Payé comptant", desc: "Caisse Pharmacie - Reçu acquitté" },
-    { type: "lab", category: "Laboratoire", label: "Résultat NFS & Bioch", info: "Commanditaire: Dr. Ibrahim Touré", desc: "Analyses de sang complet terminées • Critique" },
-    { type: "drug", category: "Médicament", label: "Paracétamol Injectable 500mg", info: "Stock: 412 flacons • Lot #PM-9941", desc: "Date péremption: 31/12/2026 - Alerte bas" },
-    { type: "drug", category: "Médicament", label: "Amoxicilline Gélules 250mg", info: "Stock: 80 boîtes • Lot #AM-8840", desc: "Pharmacie principale - Stock suffisant" },
-    { type: "collaborator", category: "Collaborateur", label: "Dr. Ibrahim Touré", info: "Rôle: Médecin Généraliste", desc: "Affectation: Service Médecine Générale" },
-    { type: "collaborator", category: "Collaborateur", label: "Fatoumata Diarra", info: "Rôle: Personnel Infirmier", desc: "Affectation: Hospitalisation & Lits" },
-    { type: "appointment", category: "Rendez-vous", label: "Sacko Mariam - Dr. Diallo", info: "Prévu: 14/06/2026 à 10:30", desc: "Visite de contrôle chirurgie générale" }
+    { type: "lab", category: "Laboratoire", label: "RÉSULTAT NFS & BIOCH", info: "Commanditaire: Dr. Ibrahim Touré", desc: "Analyses de sang complet terminées • Critique" },
+    { type: "drug", category: "Médicament", label: "PARACÉTAMOL INJECTABLE 500MG", info: "Stock: 412 flacons • Lot #PM-9941", desc: "Date péremption: 31/12/2026 - Alerte bas" },
+    { type: "drug", category: "Médicament", label: "AMOXIClLLINE GÉLULES 250MG", info: "Stock: 80 boîtes • Lot #AM-8840", desc: "Pharmacie principale - Stock suffisant" },
+    { type: "collaborator", category: "Collaborateur", label: "DR. IBRAHIM TOURÉ", info: "Rôle: Médecin Généraliste", desc: "Affectation: Service Médecine Générale" },
+    { type: "collaborator", category: "Collaborateur", label: "FATOUMATA DIARRA", info: "Rôle: Personnel Infirmier", desc: "Affectation: Hospitalisation & Lits" },
+    { type: "appointment", category: "Rendez-vous", label: "SACKO MARIAM - DR. DIALLO", info: "Prévu: 14/06/2026 à 10:30", desc: "Visite de contrôle chirurgie générale" }
   ];
 
-  const filteredSearchResults = searchQuery.trim() === "" 
+  const filteredSearchResults = debouncedQuery.trim() === "" 
     ? [] 
     : searchDatabase.filter(item => 
-        item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.desc.toLowerCase().includes(searchQuery.toLowerCase())
+        item.label.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+        item.category.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+        (item.info && item.info.toLowerCase().includes(debouncedQuery.toLowerCase())) ||
+        (item.desc && item.desc.toLowerCase().includes(debouncedQuery.toLowerCase()))
       );
 
   // Close menus on click outside
@@ -146,6 +196,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {filteredSearchResults.map((item, idx) => (
                       <div 
                         key={idx} 
+                        onClick={() => handleResultClick(item)}
                         className="p-3 hover:bg-slate-50/70 transition-colors cursor-pointer flex justify-between items-start"
                       >
                         <div>
@@ -252,80 +303,64 @@ export const Header: React.FC<HeaderProps> = ({
                   setShowMessageMenu(false);
                 }}
                 ref={bellRef}
-                className="p-2 rounded-xl border border-gray-200 hover:bg-slate-50 text-gray-400 hover:text-red-600 transition-all cursor-pointer flex items-center justify-center relative"
+                className="p-1.5 rounded-xl border border-gray-200 hover:bg-slate-50 text-gray-400 hover:text-red-650 transition-all cursor-pointer flex items-center justify-center relative"
                 id="header-notifications-bell-btn"
               >
-                <Bell className="h-4.5 w-4.5 text-slate-500 animate-swing" />
-                <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-rose-600 ring-2 ring-white"></span>
+                <Bell className="h-4.5 w-4.5 text-slate-500" />
+                {toastHistory.length > 0 && (
+                  <span className="absolute -top-1 -right-1 h-5 w-5 bg-rose-600 text-white rounded-full font-mono text-[8px] font-black flex items-center justify-center ring-2 ring-white animate-bounce">
+                    {toastHistory.length}
+                  </span>
+                )}
               </button>
 
               {showNotificationMenu && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-250 rounded-2xl shadow-xl z-50 overflow-hidden text-xs">
-                  <div className="bg-slate-950 text-slate-100 p-3.5 flex justify-between items-center border-b border-gray-800">
-                    <span className="font-bold font-mono text-[10px] uppercase">Alertes de Sûreté & Cliniques</span>
-                    <span className="bg-rose-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full font-mono">CRITIQUE</span>
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-250 rounded-2xl shadow-xl z-50 overflow-hidden text-xs text-left font-sans">
+                  <div className="bg-slate-900 text-slate-100 p-3.5 flex justify-between items-center border-b border-gray-800">
+                    <span className="font-bold font-mono text-[10px] uppercase">Alertes de Sûreté & Cliniques ({toastHistory.length})</span>
+                    {onClearHistory && toastHistory.length > 0 && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClearHistory();
+                        }}
+                        className="text-[9px] font-bold text-rose-300 hover:text-rose-100 bg-rose-950/40 px-2 py-0.5 rounded border border-rose-500/20"
+                      >
+                        Effacer tout
+                      </button>
+                    )}
                   </div>
                   <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
                     
-                    {/* Event 1: Red Critique */}
-                    <div className="p-3 hover:bg-slate-50 flex gap-2.5">
-                      <span className="h-2 w-2 rounded-full bg-rose-600 shrink-0 mt-1.5"></span>
-                      <div>
-                        <p className="font-bold text-slate-800 flex items-center gap-1">
-                          <span className="text-3xs tracking-widest text-rose-600 font-mono uppercase bg-rose-50 px-1 py-0.5 rounded">Laboratoire</span>
-                          Résultat critique disponible
-                        </p>
-                        <p className="text-3xs text-slate-500 mt-1 font-sans">
-                          Alerte Hématologie: Glycémie à jeun de Diarra Amadou mesurée à <strong>2.85 g/L</strong>. 
-                        </p>
-                        <span className="text-4xs text-slate-400 font-mono mt-1 block">Il y a 3 min • Non acquitté</span>
+                    {toastHistory.length > 0 ? (
+                      toastHistory.map((toast, index) => {
+                        let badgeBg = "bg-teal-50 text-teal-700";
+                        if (toast.includes("🔬") || toast.includes("Laboratoire")) badgeBg = "bg-purple-50 text-purple-705 border border-purple-100";
+                        else if (toast.includes("💰") || toast.includes("Caisse")) badgeBg = "bg-emerald-50 text-emerald-800 border border-emerald-100";
+                        else if (toast.includes("💊") || toast.includes("Pharmacie")) badgeBg = "bg-amber-50 text-amber-800 border border-amber-100";
+                        
+                        return (
+                          <div key={index} className="p-3 hover:bg-slate-50/70 flex gap-2.5 items-start">
+                            <span className="h-2 w-2 rounded-full bg-teal-500 shrink-0 mt-1.5 animate-pulse"></span>
+                            <div className="flex-1">
+                              <p className="font-bold text-slate-800 leading-snug">
+                                {toast}
+                              </p>
+                              <div className="flex items-center justify-between mt-1.5">
+                                <span className={`text-[8px] tracking-wide font-mono uppercase px-1 py-0.2 rounded font-black ${badgeBg}`}>
+                                  En temps réel
+                                </span>
+                                <span className="text-[8px] text-gray-450 font-mono">Clinique Sahel</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="p-10 text-center text-slate-400 italic">
+                        Aucune notification récente enregistrée dans le registre d'historique.
                       </div>
-                    </div>
-
-                    {/* Event 2: Orange Attention */}
-                    <div className="p-3 hover:bg-slate-50 flex gap-2.5">
-                      <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1.5"></span>
-                      <div>
-                        <p className="font-bold text-slate-800 flex items-center gap-1">
-                          <span className="text-3xs tracking-widest text-amber-600 font-mono uppercase bg-amber-50 px-1 py-0.5 rounded">Pharmacie</span>
-                          Médicament bientôt expiré
-                        </p>
-                        <p className="text-3xs text-slate-500 mt-1 font-sans">
-                          Lot insulinique d'officine #PM-9941 arrivant à péremption critique sous 15 jours.
-                        </p>
-                        <span className="text-4xs text-slate-400 font-mono mt-1 block">Il y a 1 heure</span>
-                      </div>
-                    </div>
-
-                    {/* Event 3: Green Info */}
-                    <div className="p-3 hover:bg-slate-50 flex gap-2.5">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 mt-1.5"></span>
-                      <div>
-                        <p className="font-bold text-slate-800 flex items-center gap-1">
-                          <span className="text-3xs tracking-widest text-emerald-600 font-mono uppercase bg-emerald-50 px-1 py-0.5 rounded">Admissions</span>
-                          Nouveau patient admis
-                        </p>
-                        <p className="text-3xs text-slate-500 mt-1 font-sans">
-                          Sacko Mariam enrôlée avec succès par triage. Affecté en Hospitalisation, Chambre 4.
-                        </p>
-                        <span className="text-4xs text-slate-400 font-mono mt-1 block">Il y a 3 heures</span>
-                      </div>
-                    </div>
-
-                    {/* Event 4: Blue Info */}
-                    <div className="p-3 hover:bg-slate-50 flex gap-2.5">
-                      <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0 mt-1.5"></span>
-                      <div>
-                        <p className="font-bold text-slate-800 flex items-center gap-1">
-                          <span className="text-3xs tracking-widest text-blue-600 font-mono uppercase bg-blue-50 px-1 py-0.5 rounded">Agenda</span>
-                          Rendez-vous confirmé
-                        </p>
-                        <p className="text-3xs text-slate-500 mt-1 font-sans">
-                          Keita Souleymane confirmé à 14h30 avec le Docteur Généraliste Alou Diallo.
-                        </p>
-                        <span className="text-4xs text-slate-400 font-mono mt-1 block">Il y a 4 heures</span>
-                      </div>
-                    </div>
+                    )}
 
                   </div>
                 </div>
@@ -345,6 +380,26 @@ export const Header: React.FC<HeaderProps> = ({
                 {user.role}
               </span>
             </div>
+
+            {/* Permanent departure button */}
+            {onDepartClick && (
+              <button
+                id="header-depart-btn"
+                onClick={onDepartClick}
+                disabled={hasCheckedOutToday || !hasCheckedInToday}
+                className={`p-2 px-3 ml-2 text-xs font-bold rounded-lg flex items-center space-x-1.5 transition-all outline-none ${
+                  hasCheckedOutToday
+                    ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                    : !hasCheckedInToday
+                    ? "bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-150"
+                    : "bg-amber-50 hover:bg-amber-100 text-amber-750 hover:text-amber-850 border border-amber-250 cursor-pointer shadow-xs"
+                }`}
+                title={hasCheckedOutToday ? "Départ déjà validé pour aujourd'hui" : !hasCheckedInToday ? "Vous devez d'abord pointer votre arrivée" : "Enregistrer mon de départ aujourd'hui"}
+              >
+                <Clock className="h-3.5 w-3.5 shrink-0" />
+                <span>{hasCheckedOutToday ? "DÉPART SIGNALÉ" : "🚪 DÉPART"}</span>
+              </button>
+            )}
 
             {/* Logout trigger button */}
             <button

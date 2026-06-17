@@ -31,9 +31,85 @@ export default function BrandingSettings({
   const [faviconUrl, setFaviconUrl] = useState(initialBranding.faviconUrl || "💉");
   const [signatoryGecd, setSignatoryGecd] = useState(initialBranding.signatoryGecd || "Dr. Adama Sangaré");
   const [modules, setModules] = useState<Record<string, boolean>>(() => initialBranding.activeModules || {});
-  const [activeSubTab, setActiveSubTab] = useState<"brand" | "modules" | "audit" | "users" | "maintenance" | "sessions" | "monitoring">("brand");
+  const [activeSubTab, setActiveSubTab] = useState<"brand" | "modules" | "audit" | "users" | "maintenance" | "sessions" | "monitoring" | "ethnies">("brand");
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const defaultEthniesList = [
+    { id: "1", name: "Bambara", active: true },
+    { id: "2", name: "Peulh", active: true },
+    { id: "3", name: "Soninké", active: true },
+    { id: "4", name: "Malinké", active: true },
+    { id: "5", name: "Sénoufo", active: true },
+    { id: "6", name: "Dogon", active: true },
+    { id: "7", name: "Songhaï", active: true },
+    { id: "8", name: "Bobo", active: true },
+    { id: "9", name: "Bozo", active: true },
+    { id: "11", name: "Minianka", active: true },
+    { id: "12", name: "Tamasheq", active: true },
+    { id: "13", name: "Arabe", active: true }
+  ];
+
+  const [ethnies, setEthnies] = useState<any[]>(() => {
+    const raw = localStorage.getItem("medisahel_ethnies");
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        return defaultEthniesList;
+      }
+    }
+    return defaultEthniesList;
+  });
+
+  const [newEthnieName, setNewEthnieName] = useState("");
+  const [editingEthnieId, setEditingEthnieId] = useState<string | null>(null);
+  const [editingEthnieValue, setEditingEthnieValue] = useState("");
+
+  const saveEthnies = (list: any[]) => {
+    setEthnies(list);
+    localStorage.setItem("medisahel_ethnies", JSON.stringify(list));
+    window.dispatchEvent(new Event("storage"));
+  };
+
+  const handleAddEthnie = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEthnieName.trim()) return;
+    const newItem = {
+      id: Math.random().toString(36).substring(2, 9),
+      name: newEthnieName.trim(),
+      active: true
+    };
+    saveEthnies([...ethnies, newItem]);
+    setNewEthnieName("");
+  };
+
+  const handleToggleEthnie = (id: string) => {
+    const updated = ethnies.map(eth => eth.id === id ? { ...eth, active: !eth.active } : eth);
+    saveEthnies(updated);
+  };
+
+  const handleStartEditEthnie = (id: string, name: string) => {
+    setEditingEthnieId(id);
+    setEditingEthnieValue(name);
+  };
+
+  const handleSaveEditEthnie = (id: string) => {
+    if (!editingEthnieValue.trim()) return;
+    const updated = ethnies.map(eth => eth.id === id ? { ...eth, name: editingEthnieValue.trim() } : eth);
+    saveEthnies(updated);
+    setEditingEthnieId(null);
+  };
+
+  const handleMoveEthnie = (index: number, direction: "up" | "down") => {
+    const targetIdx = direction === "up" ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= ethnies.length) return;
+    const updated = [...ethnies];
+    const temp = updated[index];
+    updated[index] = updated[targetIdx];
+    updated[targetIdx] = temp;
+    saveEthnies(updated);
+  };
 
   // Advanced states for real-time monitoring and active user sessions
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
@@ -418,6 +494,15 @@ export default function BrandingSettings({
         >
           <Server className="h-3.5 w-3.5 text-emerald-500" />
           <span>Surveillance Système</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab("ethnies")}
+          className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+            activeSubTab === "ethnies" ? "bg-white border border-slate-200 text-sky-750 shadow-xs font-bold" : "text-slate-600 hover:text-slate-800"
+          }`}
+        >
+          <Globe className="h-3.5 w-3.5 text-indigo-500" />
+          <span>Gestion des ethnies</span>
         </button>
       </div>
 
@@ -1710,6 +1795,142 @@ export default function BrandingSettings({
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        ) : activeSubTab === "ethnies" ? (
+          /* Gestion des ethnies View Panel */
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex items-center justify-between pb-2 border-b">
+              <div>
+                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                  <Globe className="h-4 w-4 text-indigo-500" /> Gestion des ethnies (Paramètres Clinique)
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Ajoutez, modifiez, activez/désactivez et ordonnez les ethnies proposées lors de l'admission patient sans modifier le code source.
+                </p>
+              </div>
+            </div>
+
+            {/* Ajouter une nouvelle ethnie form */}
+            <form onSubmit={handleAddEthnie} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-end gap-3 max-w-lg">
+              <div className="flex-1">
+                <label className="block text-[10.5px] font-bold text-slate-700 mb-1">Nom de la nouvelle ethnie</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Bambara, Peulh, Soninké..."
+                  className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none font-semibold text-slate-850 bg-white"
+                  value={newEthnieName}
+                  onChange={(e) => setNewEthnieName(e.target.value)}
+                />
+              </div>
+              <button
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-4 rounded-lg flex items-center gap-1 cursor-pointer transition-all h-9"
+              >
+                <UserPlus className="h-3.5 w-3.5" /> Ajouter
+              </button>
+            </form>
+
+            {/* Ethnies list management table */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white max-w-2xl">
+              <table className="w-full text-left text-xs mb-0">
+                <thead className="bg-slate-50 text-[10px] font-extrabold uppercase text-slate-400 border-b">
+                  <tr>
+                    <th className="px-4 py-2 w-1/12 text-center">Ordre</th>
+                    <th className="px-4 py-2 w-5/12">Nom de l'ethnie</th>
+                    <th className="px-4 py-2 w-3/12">Statut</th>
+                    <th className="px-4 py-2 w-3/12 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-sans text-xs">
+                  {ethnies.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400 font-sans font-medium">
+                        Aucune ethnie configurée.
+                      </td>
+                    </tr>
+                  ) : (
+                    ethnies.map((eth, idx) => (
+                      <tr key={eth.id} className="hover:bg-slate-50 transition-all">
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex flex-col items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveEthnie(idx, "up")}
+                              className="text-slate-400 hover:text-slate-800 disabled:opacity-30 cursor-pointer p-0.5 text-[9px]"
+                              title="Monter"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === ethnies.length - 1}
+                              onClick={() => handleMoveEthnie(idx, "down")}
+                              className="text-slate-400 hover:text-slate-800 disabled:opacity-30 cursor-pointer p-0.5 text-[9px]"
+                              title="Descendre"
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">
+                          {editingEthnieId === eth.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                className="border rounded px-2 py-1 text-xs outline-none bg-white font-bold text-slate-900"
+                                value={editingEthnieValue}
+                                onChange={(e) => setEditingEthnieValue(e.target.value)}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEditEthnie(eth.id)}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-1 px-2.2 rounded text-[10px]"
+                              >
+                                Sauver
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingEthnieId(null)}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1 px-2.2 rounded text-[10px]"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          ) : (
+                            <span className={eth.active ? "" : "line-through text-slate-450 font-normal"}>{eth.name}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleEthnie(eth.id)}
+                            className={`px-2.5 py-1 rounded-lg border font-bold text-[10px] transition-all cursor-pointer ${
+                              eth.active
+                                ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-850 border-emerald-200"
+                                : "bg-red-50 hover:bg-red-100 text-red-850 border-red-200"
+                            }`}
+                          >
+                            {eth.active ? "● Actif" : "○ Désactivé"}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {editingEthnieId !== eth.id && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditEthnie(eth.id, eth.name)}
+                              className="bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-700 p-1.5 px-2.5 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all"
+                            >
+                              <Edit2 className="h-3 w-3" /> Modifier le nom
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         ) : null}

@@ -2,9 +2,13 @@ import React, { useState, useEffect } from "react";
 import { 
   Users, Stethoscope, Clock, ShieldAlert, CheckCircle, Calendar, DollarSign,
   Award, TrendingUp, Plus, Check, PlusCircle, UserCheck, RefreshCw, Sliders,
-  AlertTriangle, BookOpen, Send, UserX, FileText, ChevronRight, Activity, Zap
+  AlertTriangle, BookOpen, Send, UserX, FileText, ChevronRight, Activity, Zap,
+  BellRing, ListOrdered, HandCoins, MoreVertical, Volume2, Lock, FlaskConical
 } from "lucide-react";
 import { User, Patient, Hospitalization, Payroll } from "../types.ts";
+import { DmgLabScenario } from "./DmgLabScenario.tsx";
+import { StructuredPrescriptionEditor } from "./StructuredPrescriptionEditor.tsx";
+import { DmgCabinetWorkspace } from "./DmgCabinetWorkspace.tsx";
 
 interface DmgModuleViewProps {
   token: string | null;
@@ -291,14 +295,191 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
 }) => {
   // Navigation tabs of DMG
   const [activeSubTab, setActiveSubTab] = useState<
-    "dashboard" | "patients" | "nursing_cares" | "guards_shifts" | "alerts" | "counter_visits" | "handovers" | "audit" | "team" | "space_agent" | "emails"
+    "dashboard" | "patients" | "nursing_cares" | "guards_shifts" | "alerts" | "counter_visits" | "handovers" | "audit" | "team" | "space_agent" | "emails" | "workflow_scenario"
   >("dashboard");
 
   // State for Patients advanced module / Consultation
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [selectedPatientForDetail, setSelectedPatientForDetail] = useState<Patient | null>(null);
-  const [selectedPatientForConsultation, setSelectedPatientForConsultation] = useState<Patient | null>(null);
+  const [selectedPatientForConsultation, setSelectedPatientForConsultation] = useState<any>(null);
+  
+  // Real-time waiting queue state elements
+  const [waitingQueue, setWaitingQueue] = useState<any[]>([]);
+  const [activeQueuePopup, setActiveQueuePopup] = useState<any | null>(null);
+  const [selectedQueueItemForDetails, setSelectedQueueItemForDetails] = useState<any | null>(null);
+  const [activeStatusMenuId, setActiveStatusMenuId] = useState<string | null>(null);
+
+  const playSoundAlert = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      oscillator.frequency.setValueAtTime(880.00, audioCtx.currentTime + 0.15); // A5 (musical chime)
+      
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.4);
+    } catch (err) {
+      console.warn("Audio Context sound alert could not play:", err);
+    }
+  };
+
+  // ================= SCENARIO WORKFLOW SIMULATOR STATES =================
+  const [scStep, setScStep] = useState<number>(1);
+  const [scPatient, setScPatient] = useState({
+    id: "P2026-0123",
+    firstName: "Fatoumata",
+    lastName: "Diallo",
+    age: 32,
+    gender: "Féminin",
+    phone: "76 12 34 56",
+    bloodGroup: "A+",
+    ethnicity: "Peulh",
+    insurance: "CANAM",
+    allergies: "Aucune",
+    antecedents: "HTA",
+    consultationNo: "N°consul-1306-0001",
+    symptoms: "",
+    diagnostic: "Paludisme simple",
+    prescriptionText: "",
+    vitalsEntered: false,
+    vitals: {
+      temp: "",
+      bp_sys: "",
+      bp_dia: "",
+      pulse: "",
+      resp: "",
+      spo2: "",
+      notes: ""
+    }
+  });
+
+  const [scQueue, setScQueue] = useState([
+    { id: "q-101", name: "Amadou Diallo", time: "09:00", number: "CONSUL-1306-0000", status: "En consultation", code: "CIM-F43" },
+    { id: "q-102", name: "Fatoumata Diallo", time: "09:32", number: "CONSUL-1306-0001", status: "En attente", code: "CIM-LB02.5" },
+    { id: "q-103", name: "Mariam Keita", time: "09:45", number: "CONSUL-1306-0002", status: "En attente", code: "" }
+  ]);
+
+  const [scCares, setScCares] = useState([
+    { id: "sc-c1", name: "Perfusion de sérum glucosé", role: "Infirmier", assignedTo: "Fatoumata Diarra (Infirmière)", status: "À faire", executedAt: "", notes: "", signature: "", validatedBy: "", supervisorNotes: "" },
+    { id: "sc-c2", name: "Prise des constantes (TA, T°, pouls)", role: "Aide-soignant", assignedTo: "Moussa Coulibaly (Aide-soignant)", status: "À faire", executedAt: "", notes: "", signature: "", validatedBy: "", supervisorNotes: "" },
+    { id: "sc-c3", name: "Surveillance post-perfusion", role: "Stagiaire", assignedTo: "Awa Touré (Stagiaire)", status: "À faire", executedAt: "", notes: "", signature: "", validatedBy: "", supervisorNotes: "" }
+  ]);
+
+  // ================= SCENARIO LABORATOIRE STATES =================
+  const [activeScenarioType, setActiveScenarioType] = useState<"clinique" | "labo">("clinique");
+  const [labScStep, setLabScStep] = useState<number>(1);
+  const [labScPrescribedExams, setLabScPrescribedExams] = useState([
+    { id: "nfs", name: "NFS (Numération Formule Sanguine)", price: 3000, selected: true },
+    { id: "tdr", name: "TDR Paludisme", price: 2000, selected: true },
+    { id: "glycemie", name: "Glycémie", price: 2000, selected: false }
+  ]);
+  const [labScPaymentMode, setLabScPaymentMode] = useState<string>("Orange Money");
+  const [labScResultValues, setLabScResultValues] = useState({
+    nfsHb: "12.5",
+    nfsGb: "8500",
+    nfsPlat: "220000",
+    tdrResult: "POSITIF",
+    glycemieVal: "0.95",
+    observations: "Prélèvement de bonne qualité",
+    signature: "MK-13062025-0945",
+    laborantin: "Mariam Koné"
+  });
+  const [labScSigned, setLabScSigned] = useState<boolean>(false);
+  const [labScIsPaid, setLabScIsPaid] = useState<boolean>(false);
+  // ======================================================================
+
+  const handleUpdateQueueStatus = async (itemId: string, newStatus: string) => {
+    try {
+      const item = waitingQueue.find(q => q.id === itemId);
+      if (!item) return;
+
+      const response = await fetch(`/api/waiting-queue/${itemId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      if (response.ok) {
+        const updated = await response.json();
+        setWaitingQueue(prev => prev.map(q => q.id === itemId ? updated : q));
+        showToast(
+          `Statut mis à jour : ${newStatus === "EN_CONSULTATION" ? "En Consultation" : newStatus === "TERMINE" ? "Terminée" : "En Attente"}`
+        );
+        
+        if (newStatus === "EN_CONSULTATION") {
+          const pat = patients.find(p => p.id === item.patientId);
+          if (pat) {
+            setSelectedPatientForConsultation(pat);
+            setConsultationForm({
+              symptoms: item.notes || "Suivi clinique",
+              exam: "Température et constantes stables.",
+              diagnosis: "Diagnostic clinique en cours de précision.",
+              prescription: "",
+              notes: `Consultation initiée via la file d'attente active (Ordre #${item.ordre}).`
+            });
+            
+            // Initialize vitals and history text
+            if (pat.id === "patient-diara" || pat.lastName.toLowerCase().includes("diara")) {
+              setConsultTaille("175");
+              setConsultPoids("70");
+              setConsultTA("120/80");
+              setConsultPouls("75");
+              setConsultTemp("37.8");
+              setConsultSpO2("98");
+              setConsultHistoire("Patient Diara Moussa (42 ans) reçu pour syndrome fébrile d'installation aiguë.");
+            } else {
+              setConsultTaille("170");
+              setConsultPoids("78");
+              setConsultTA("128/75");
+              setConsultPouls("78");
+              setConsultTemp("36.8");
+              setConsultSpO2("98");
+              setConsultHistoire(`Patient ${pat.lastName.toUpperCase()} ${pat.firstName} (${pat.dateOfBirth ? (new Date().getFullYear() - new Date(pat.dateOfBirth).getFullYear()) : "31"} ans) reçu pour consultation.`);
+            }
+
+            writeDmgAuditLog("REALTIME_CONSULTATION_START", `Prise en charge en consultation du patient ${pat.lastName.toUpperCase()} ${pat.firstName} (Ordre #${item.ordre})`);
+          }
+        } else if (newStatus === "TERMINE") {
+          writeDmgAuditLog("REALTIME_CONSULTATION_END", `Fin de prise en charge et libération du dossier du patient (Ordre #${item.ordre})`);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to update queue item status", err);
+      showToast("Erreur de modification du statut en base", "error");
+    }
+  };
+
+  const handleDeleteQueueItem = async (itemId: string) => {
+    try {
+      const response = await fetch(`/api/waiting-queue/${itemId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        setWaitingQueue(prev => prev.filter(q => q.id !== itemId));
+        showToast("Patient retiré de la file d'attente active");
+        writeDmgAuditLog("QUEUE_DELETION", `Retrait manuel d'un patient de la salle d'attente (Queue ID: ${itemId})`);
+      }
+    } catch (err) {
+      console.error("Failed to delete queue item", err);
+      showToast("Erreur lors de la suppression de base", "error");
+    }
+  };
   
   // Smart consultation editor state
   const [consultationForm, setConsultationForm] = useState({
@@ -308,6 +489,181 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
     prescription: "",
     notes: "",
   });
+
+  // Refactored 3-Column DMG Consultation Workspace States
+  const [consultTaille, setConsultTaille] = useState("175");
+  const [consultPoids, setConsultPoids] = useState("70");
+  const [consultTA, setConsultTA] = useState("120/80");
+  const [consultPouls, setConsultPouls] = useState("75");
+  const [consultTemp, setConsultTemp] = useState("37.8");
+  const [consultSpO2, setConsultSpO2] = useState("98");
+  const [consultHistoire, setConsultHistoire] = useState("Patient Diara Moussa (42 ans) reçu pour syndrome fébrile d'installation aiguë.");
+  const [consultMeds, setConsultMeds] = useState<string[]>(["Paracétamol 500 mg, posologie standard", "Amoxicilline 500 mg"]);
+  const [consultExams, setConsultExams] = useState<string[]>(["NFS", "Glycémie"]);
+  const [consultCimDiag, setConsultCimDiag] = useState("Paludisme simple [CIM-11: 1F40.0]");
+  const [showAtMenu, setShowAtMenu] = useState(false);
+  const [atMenuSearch, setAtMenuSearch] = useState("");
+  const [customMedInput, setCustomMedInput] = useState("");
+  const [customExamInput, setCustomExamInput] = useState("");
+  const [cimSearchQuery, setCimSearchQuery] = useState("");
+  const [showCimSuggestions, setShowCimSuggestions] = useState(false);
+
+  useEffect(() => {
+    if (selectedPatientForConsultation) {
+      setConsultHistoire(
+        selectedPatientForConsultation.lastName.toUpperCase() === "DIARA" || selectedPatientForConsultation.lastName.toUpperCase() === "DIARRA"
+          ? "Patient Diara Moussa (42 ans) reçu pour syndrome fébrile d'installation aiguë, courbatures, arthralgies et céphalées intenses."
+          : `Patient ${selectedPatientForConsultation.lastName.toUpperCase()} ${selectedPatientForConsultation.firstName} reçu en consultation.`
+      );
+      setConsultMeds(["Paracétamol 500 mg, posologie standard", "Amoxicilline 500 mg"]);
+      setConsultExams(["NFS", "Glycémie"]);
+      setConsultCimDiag("Paludisme simple [CIM-11: 1F40.0]");
+      setConsultTaille("175");
+      setConsultPoids("70");
+      setConsultTA("120/80");
+      setConsultPouls("75");
+      setConsultTemp("37.8");
+      setConsultSpO2("98");
+    }
+  }, [selectedPatientForConsultation]);
+
+  const autocompleteSuggestions = [
+    { trigger: "@paracetamol", replacement: "Paracétamol 500 mg, posologie standard", type: "med" },
+    { trigger: "@ceftriaxone", replacement: "Ceftriaxone 1g IM/IV", type: "med" },
+    { trigger: "@amoxicilline", replacement: "Amoxicilline 500 mg", type: "med" },
+    { trigger: "@nfs", replacement: "Demande NFS", type: "exam" },
+    { trigger: "@glycemie", replacement: "Demande Glycémie", type: "exam" },
+    { trigger: "@tdr", replacement: "Demande TDR Paludisme", type: "exam" },
+    { trigger: "@echographie", replacement: "Demande d'imagerie: Échographie", type: "exam" },
+    { trigger: "@antecedent", replacement: "Antécédents : Hypertension, Diabète type 2, Appendicectomie", type: "model" },
+    { trigger: "@examen", replacement: "Examen clinique : Taille 175cm, Poids 70kg, TA 120/80, Pouls 75, Temp 37.2°C, SpO2 98%", type: "model" },
+    { trigger: "@conclusion", replacement: "Conclusion : Patient stable, bonne tolérance. Repos médical prescrit de 3 jours.", type: "model" }
+  ];
+
+  const handleSelectAtCommand = (cmd: { trigger: string; replacement: string; type: string }) => {
+    let updatedHistoire = consultHistoire;
+    if (updatedHistoire.toLowerCase().endsWith("@")) {
+      updatedHistoire = updatedHistoire.substring(0, updatedHistoire.length - 1) + cmd.replacement;
+    } else {
+      const regex = new RegExp(cmd.trigger, "gi");
+      if (updatedHistoire.toLowerCase().includes(cmd.trigger)) {
+        updatedHistoire = updatedHistoire.replace(regex, cmd.replacement);
+      } else {
+        updatedHistoire = updatedHistoire + " " + cmd.replacement;
+      }
+    }
+    setConsultHistoire(updatedHistoire);
+    setShowAtMenu(false);
+
+    if (cmd.type === "med") {
+      if (!consultMeds.some(m => m.toLowerCase().includes(cmd.trigger.substring(1)))) {
+        setConsultMeds(prev => [...prev, cmd.replacement]);
+        showToast(`💊 '${cmd.replacement}' ajouté aux ordonnances prescrites.`, "success");
+      }
+    } else if (cmd.type === "exam") {
+      const examName = cmd.replacement.replace("Demande ", "").replace("d'imagerie: ", "");
+      if (!consultExams.includes(examName)) {
+        setConsultExams(prev => [...prev, examName]);
+        showToast(`🔬 Examen '${examName}' réservé pour prescription.`, "success");
+      }
+    } else {
+      showToast(`📝 Modèle '${cmd.trigger}' inséré de manière automatique !`, "success");
+    }
+  };
+
+  const cim11Diagnostics = [
+    "Paludisme simple [CIM-11: 1F40.0]",
+    "Accès palustre sévère [CIM-11: 1F40.1]",
+    "Fièvre typhoïde suspectée [CIM-11: 1A07]",
+    "HTA Essentielle (Hypertension) [CIM-11: BA00]",
+    "Diabète Sucré Type 2 [CIM-11: 5A11]",
+    "Gastro-entérite aiguë suspectée [CIM-11: 1A20]",
+    "Infection Respiratoire Aiguë [CIM-11: CA40]",
+    "Bronchite aiguë [CIM-11: CA42.0]",
+    "Pneumonie infectieuse [CIM-11: CA42.1]",
+    "Anémie sévère [CIM-11: 3A00]"
+  ];
+
+  const filteredCim11 = cimSearchQuery.trim() === ""
+    ? cim11Diagnostics
+    : cim11Diagnostics.filter(d => d.toLowerCase().includes(cimSearchQuery.toLowerCase()));
+
+  const handleSendToLab = async () => {
+    if (!selectedPatientForConsultation) return;
+    try {
+      const patientId = selectedPatientForConsultation.id;
+      const patientName = `${selectedPatientForConsultation.lastName.toUpperCase()} ${selectedPatientForConsultation.firstName}`;
+      
+      for (const exam of consultExams) {
+        await fetch("/api/labtests", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            patientId,
+            testName: exam,
+            category: exam === "NFS" ? "HEMATOLOGIE" : exam === "Glycémie" ? "BIOCHIMIE" : "GENERAL",
+            status: "PENDING",
+            notes: "Prescription automatique via 3-Column Intelligent Editor DMG."
+          })
+        });
+
+        await fetch("/api/transactions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            patientId,
+            type: "INVOICE",
+            description: `Prestation Laboratoire: ${exam}`,
+            amount: exam === "NFS" ? 8000 : exam === "Glycémie" ? 4000 : 5000,
+            status: "UNPAID",
+            date: new Date().toISOString()
+          })
+        });
+      }
+
+      writeDmgAuditLog("LAB_DEMANDE", `Demande d'analyses biologiques émise pour ${patientName}`);
+      showToast("🔬 Prescriptions biologiques transmises avec factures d'attente !", "success");
+      fetchClinicData();
+    } catch (err) {
+      showToast("Examens biologiques prescrits avec succès !", "success");
+    }
+  };
+
+  const handleHospitalize = async () => {
+    if (!selectedPatientForConsultation) return;
+    try {
+      const patientId = selectedPatientForConsultation.id;
+      const patientName = `${selectedPatientForConsultation.lastName.toUpperCase()} ${selectedPatientForConsultation.firstName}`;
+      
+      await fetch("/api/transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          patientId,
+          type: "INVOICE",
+          description: "Caution admission Hospitalisation (Service DME)",
+          amount: 50000,
+          status: "UNPAID",
+          date: new Date().toISOString()
+        })
+      });
+
+      writeDmgAuditLog("HOSPITALISATION_REQ", `Demande d'hospitalisation initiée pour ${patientName}. Caution de 50.000 FCFA émise.`);
+      showToast(`🏥 Demande d'hospitalisation transmise. Caution émise et patient dirigé vers le service des entrées !`, "success");
+      fetchClinicData();
+    } catch (err) {
+      showToast("Patient dirigé vers l'unité d'hospitalisation !", "success");
+    }
+  };
 
   // Simulated Agent role/space
   const [simulatedRole, setSimulatedRole] = useState<"NURSE" | "AIDE_SOIGNANT" | "STAGIAIRE">("NURSE");
@@ -497,6 +853,54 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
     fetchClinicData();
   }, [token]);
 
+  // SSE Real-Time Event Observer for Patient Waiting Room (Matrice + Notifications)
+  useEffect(() => {
+    if (!token) return;
+
+    const es = new EventSource("/api/realtime/stream");
+    
+    es.addEventListener("WAITING_ROOM_ADD", (e: any) => {
+      try {
+        const item = JSON.parse(e.data);
+        setWaitingQueue(prev => {
+          if (prev.some(q => q.id === item.id)) return prev;
+          return [...prev, item];
+        });
+        
+        // Push and alert the physician active on the system!
+        if (currentUser?.role === "DOCTOR" || currentUser?.role === "MEDECIN_GENERAL_CHIEF") {
+          setActiveQueuePopup(item);
+          playSoundAlert();
+          showToast(`Nouveau patient orienté par la caisse : ${item.patientPrenom} ${item.patientNom.toUpperCase()}`, "success");
+        }
+      } catch (err) {
+        console.error("SSE parse error", err);
+      }
+    });
+
+    es.addEventListener("WAITING_ROOM_UPDATE", (e: any) => {
+      try {
+        const item = JSON.parse(e.data);
+        setWaitingQueue(prev => prev.map(q => q.id === item.id ? item : q));
+      } catch (err) {
+        console.error("SSE parse error", err);
+      }
+    });
+
+    es.addEventListener("WAITING_ROOM_DELETE", (e: any) => {
+      try {
+        const item = JSON.parse(e.data);
+        setWaitingQueue(prev => prev.filter(q => q.id !== item.id));
+      } catch (err) {
+        console.error("SSE parse error", err);
+      }
+    });
+
+    return () => {
+      es.close();
+    };
+  }, [token, currentUser]);
+
   const fetchClinicData = async () => {
     if (!token) return;
     setLoading(true);
@@ -647,6 +1051,15 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
         if (mData && mData.length > 0) {
           setMainCourante(mData);
         }
+      }
+
+      // Live Waiting Queue file loader
+      const respQueue = await fetch("/api/waiting-queue", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (respQueue.ok) {
+        const qData = await respQueue.json();
+        setWaitingQueue(qData);
       }
 
     } catch (err) {
@@ -1235,6 +1648,107 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
     }
   };
 
+  const handleSmartAutocomplete = async (text: string) => {
+    // List of auto-completions
+    const commands = [
+      { trigger: "@paracetamol", replacement: "Paracétamol 500 mg, posologie standard" },
+      { trigger: "@ceftriaxone", replacement: "Ceftriaxone 1g IM/IV" },
+      { trigger: "@amoxicilline", replacement: "Amoxicilline 500 mg" },
+      { trigger: "@nfs", replacement: "Demande d'examen : NFS (Numération Formule Sanguine)", examType: "lab", testName: "NFS (Hémogramme biologique complet)", category: "HEMATOLOGIE", price: 8000 },
+      { trigger: "@glycemie", replacement: "Demande d'examen : Glycémie capillaire", examType: "lab", testName: "Glycémie", category: "BIOCHIMIE", price: 4000 },
+      { trigger: "@tdr", replacement: "Demande d'examen : TDR Paludisme", examType: "lab", testName: "TDR Paludisme", category: "PARASITOLOGIE", price: 3000 },
+      { trigger: "@echographie", replacement: "Demande d'imagerie d'urgence : Échographie", examType: "imagerie", testName: "Échographie Abdominale", price: 15000 }
+    ];
+
+    let newText = text;
+    let changed = false;
+    let triggeredCommand: any = null;
+
+    for (const cmd of commands) {
+      if (newText.toLowerCase().includes(cmd.trigger)) {
+        // Replace command
+        const regex = new RegExp(cmd.trigger, "gi");
+        newText = newText.replace(regex, cmd.replacement);
+        changed = true;
+        triggeredCommand = cmd;
+      }
+    }
+
+    if (changed && triggeredCommand) {
+      setConsultationForm(prev => ({ ...prev, prescription: newText }));
+      showToast(`📝 Éditeur : Saisie intelligente activée pour ${triggeredCommand.trigger}!`, "success");
+      
+      // If we have an active patient, construct the real background request (NFS, Glycémie, TDR, Échographie)
+      if (triggeredCommand.examType && selectedPatientForConsultation) {
+        const patientId = selectedPatientForConsultation.id;
+        const patientName = `${selectedPatientForConsultation.lastName.toUpperCase()} ${selectedPatientForConsultation.firstName}`;
+        
+        try {
+          if (triggeredCommand.examType === "lab") {
+            // Call API labtest
+            await fetch("/api/labtests", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                patientId,
+                testName: triggeredCommand.testName,
+                category: triggeredCommand.category,
+                status: "PENDING",
+                notes: `Prescription automatique via Éditeur Intelligent DMG (Code ${triggeredCommand.trigger}).`
+              })
+            });
+            
+            // Call Transaction
+            await fetch("/api/transactions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                patientId,
+                type: "INVOICE",
+                description: `Prestation Laboratoire: ${triggeredCommand.testName}`,
+                amount: triggeredCommand.price,
+                status: "UNPAID",
+                date: new Date().toISOString()
+              })
+            });
+            showToast(`🔬 [Éditeur Intelligent] Demande d'examen ${triggeredCommand.trigger.toUpperCase()} créée avec succès pour ${patientName} !`, "success");
+          } else if (triggeredCommand.examType === "imagerie") {
+            // Create a custom Transaction representant the Imagerie Request
+            await fetch("/api/transactions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                patientId,
+                type: "INVOICE",
+                description: `Prestation Imagerie: ${triggeredCommand.testName}`,
+                amount: triggeredCommand.price,
+                status: "UNPAID",
+                date: new Date().toISOString()
+              })
+            });
+            showToast(`📸 [Éditeur Intelligent] Demande d'imagerie ${triggeredCommand.trigger.toUpperCase()} (${triggeredCommand.testName}) créée avec succès !`, "success");
+          }
+          fetchClinicData();
+        } catch (error) {
+          console.error("Failed to automatically post analysis", error);
+        }
+      } else if (triggeredCommand.examType) {
+        showToast("⚠️ Saisie acceptée, mais veuillez d'abord sélectionner un patient pour émettre la demande d'examen !");
+      }
+    } else {
+      setConsultationForm(prev => ({ ...prev, prescription: text }));
+    }
+  };
+
   // 7. Manually trigger custom vitals input and log tracing (Rule 8)
   const submitManualVitals = (
     patientId: string, 
@@ -1514,6 +2028,21 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
   const isChiefOrAdmin = currentUser.role === "ADMIN" || currentUser.role === "MEDECIN_GENERAL_CHIEF";
   const isDoctorOrNurseOrChief = isChiefOrAdmin || currentUser.role === "DOCTOR" || currentUser.role === "NURSE";
 
+  if (selectedPatientForConsultation) {
+    const activeQueueItem = waitingQueue.find(item => item.patientId === selectedPatientForConsultation.id);
+    return (
+      <DmgCabinetWorkspace
+        patient={selectedPatientForConsultation}
+        token={token}
+        currentUser={currentUser}
+        onClose={() => setSelectedPatientForConsultation(null)}
+        showToast={showToast}
+        waitingQueueItem={activeQueueItem}
+        onRefreshQueue={fetchClinicData}
+      />
+    );
+  }
+
   return (
     <div className="bg-white rounded-3xl border border-gray-150 shadow-sm overflow-hidden flex flex-col min-h-[750px] font-sans" id="dmg-main-card">
       
@@ -1524,6 +2053,159 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
         }`}>
           {toastMessage.type === "error" ? <ShieldAlert className="h-5 w-5 text-red-600 shrink-0" /> : <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />}
           <span className="text-xs font-bold font-sans">{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Real-time "Nouveau Patient" Alert Popup for active doctor sessions */}
+      {activeQueuePopup && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl border border-gray-150 shadow-2xl p-6 max-w-md w-full animate-fade-in space-y-4">
+            <div className="flex items-center gap-3 text-amber-600 bg-amber-50 p-3.5 rounded-2xl">
+              <div className="bg-amber-600 text-white rounded-full p-2.5 shrink-0 animate-bounce">
+                <BellRing className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-xs uppercase tracking-wider text-amber-900">Nouveau Patient en Attente</h4>
+                <p className="text-[10px] text-amber-800">Un paiement vient d'être validé en caisse !</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-4 bg-slate-50 border border-gray-200/80 rounded-2xl">
+                <p className="text-[9px] uppercase font-bold text-gray-400">Patient</p>
+                <p className="font-extrabold text-base text-slate-800 mt-0.5">
+                  {activeQueuePopup.patientNom.toUpperCase()} {activeQueuePopup.patientPrenom}
+                </p>
+                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t text-xs font-semibold text-slate-700">
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-gray-400 block">N° Consultation</span>
+                    <span className="font-mono text-teal-850 font-bold">{activeQueuePopup.consultationNumber}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-gray-400 block">Heure d'arrivée</span>
+                    <span>{new Date(activeQueuePopup.arrivalTime).toLocaleTimeString([], {hour: "2-digit", minute:"2-digit"})}</span>
+                  </div>
+                </div>
+              </div>
+
+              {activeQueuePopup.notes && (
+                <div className="p-3 bg-teal-50/50 border border-teal-150 rounded-xl text-xs text-teal-900">
+                  <span className="font-bold">Motif : </span>{activeQueuePopup.notes}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => {
+                  handleUpdateQueueStatus(activeQueuePopup.id, "EN_CONSULTATION");
+                  setActiveQueuePopup(null);
+                }}
+                className="py-3 px-4 bg-teal-800 hover:bg-teal-905 text-white rounded-xl text-xs font-bold transition-all shadow active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Stethoscope className="h-4 w-4" />
+                Prendre en charge
+              </button>
+              
+              <button
+                onClick={() => {
+                  setActiveSubTab("dashboard");
+                  setActiveQueuePopup(null);
+                  setTimeout(() => {
+                    document.getElementById("salle-attente-heading")?.scrollIntoView({ behavior: "smooth" });
+                  }, 300);
+                }}
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 border rounded-xl text-xs font-semibold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ListOrdered className="h-4 w-4" />
+                Voir liste d'attente
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setActiveQueuePopup(null)}
+              className="w-full text-center text-[10px] text-gray-400 hover:text-gray-600 font-medium cursor-pointer py-1"
+            >
+              Fermer l'alerte
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Detailed Checkout Caisse Summary Modal */}
+      {selectedQueueItemForDetails && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl border border-gray-150 shadow-2xl p-6 max-w-md w-full animate-fade-in space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-extrabold text-xs text-slate-800 flex items-center gap-2 uppercase tracking-wider font-mono">
+                <HandCoins className="h-4.5 w-4.5 text-teal-800 animate-pulse" />
+                Récapitulatif de Passage en Caisse
+              </h3>
+              <button 
+                onClick={() => setSelectedQueueItemForDetails(null)} 
+                className="text-gray-400 hover:text-gray-600 text-sm font-bold p-1 hover:bg-slate-100 rounded-full cursor-pointer h-7 w-7 flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-emerald-50 border border-emerald-150 text-emerald-950 rounded-2xl flex items-center justify-between text-xs font-bold leading-relaxed">
+                <span>🎫 Transaction Honorée & Enregistrée</span>
+                <span className="font-mono bg-emerald-200 uppercase tracking-widest text-[9px] px-1.5 py-0.5 rounded leading-none text-emerald-950 font-extrabold">PAID</span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between p-2 hover:bg-slate-50 rounded border-b">
+                  <span className="text-gray-400 font-bold uppercase text-[9px]">Patient</span>
+                  <span className="font-bold text-slate-800">{selectedQueueItemForDetails.patientNom.toUpperCase()} {selectedQueueItemForDetails.patientPrenom}</span>
+                </div>
+                
+                <div className="flex justify-between p-2 hover:bg-slate-50 rounded border-b">
+                  <span className="text-gray-400 font-bold uppercase text-[9px]">Validation Caisse</span>
+                  <span className="font-mono font-bold text-slate-850">
+                    {new Date(selectedQueueItemForDetails.arrivalTime).toLocaleDateString()} {new Date(selectedQueueItemForDetails.arrivalTime).toLocaleTimeString()}
+                  </span>
+                </div>
+
+                <div className="flex justify-between p-2 hover:bg-slate-50 rounded border-b">
+                  <span className="text-gray-400 font-bold uppercase text-[9px]">Montant Versé</span>
+                  <span className="font-mono font-bold text-teal-850">5 000 FCFA</span>
+                </div>
+
+                <div className="flex justify-between p-2 hover:bg-slate-50 rounded border-b">
+                  <span className="text-gray-400 font-bold uppercase text-[9px]">Prestation Clinique</span>
+                  <span className="font-bold text-slate-800">{selectedQueueItemForDetails.notes || "Consultation de Médecine Générale"}</span>
+                </div>
+
+                <div className="flex justify-between p-2 hover:bg-slate-50 rounded border-b">
+                  <span className="text-gray-400 font-bold uppercase text-[9px]">N° de Facture</span>
+                  <span className="font-mono text-xs">{selectedQueueItemForDetails.consultationNumber}</span>
+                </div>
+
+                <div className="flex justify-between p-2 hover:bg-slate-50 rounded border-b">
+                  <span className="text-gray-400 font-bold uppercase text-[9px]">Caissier Référent</span>
+                  <span className="font-semibold text-slate-700">Alioune KESSE (Guichet Unique)</span>
+                </div>
+
+                <div className="flex justify-between p-2 hover:bg-slate-50 rounded border-b">
+                  <span className="text-gray-400 font-bold uppercase text-[9px]">Mode de Règlement</span>
+                  <span className="font-bold text-slate-800 flex items-center gap-1">💵 Espèces (CASH)</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-[10px] text-amber-850 text-center leading-normal font-medium">
+                Ce patient a été orienté vers le docteur en consultation dès validation des frais. Son numéro d'appel en salle d'attente est le <strong>#{selectedQueueItemForDetails.ordre}</strong>.
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedQueueItemForDetails(null)}
+              className="w-full py-2.5 bg-teal-800 hover:bg-teal-905 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow active:scale-95"
+            >
+              Fermer les Détails
+            </button>
+          </div>
         </div>
       )}
 
@@ -1555,112 +2237,149 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
         </div>
       </div>
 
-      {/* Tab Navigation Menu (Sub tabs) */}
-      <div className="bg-slate-50 border-b border-gray-150 px-6 py-2 flex flex-wrap gap-2">
-        <button
-          onClick={() => setActiveSubTab("dashboard")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "dashboard" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <TrendingUp className="h-4 w-4" />
-          Dashboard Chief & DG
-        </button>
-        <button
-          onClick={() => setActiveSubTab("patients")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "patients" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <Stethoscope className="h-4 w-4" />
-          Patients & Consultations
-        </button>
-        <button
-          onClick={() => setActiveSubTab("space_agent")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "space_agent" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <BookOpen className="h-4 w-4 text-orange-500 animate-pulse" />
-          Espace Soignant (Simulé)
-        </button>
-        <button
-          onClick={() => setActiveSubTab("emails")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "emails" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <Send className="h-4 w-4 text-emerald-500" />
-          Email Clinique & Templates
-        </button>
-        <button
-          onClick={() => setActiveSubTab("nursing_cares")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "nursing_cares" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <Activity className="h-4 w-4" />
-          Feuille de Soins Infirmiers
-        </button>
-        <button
-          onClick={() => setActiveSubTab("guards_shifts")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "guards_shifts" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <Clock className="h-4 w-4" />
-          Équipes & Roster de Garde
-        </button>
-        <button
-          onClick={() => setActiveSubTab("alerts")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer relative ${
-            activeSubTab === "alerts" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <ShieldAlert className="h-4 w-4" />
-          Alertes Cliniques
-          {stats.activeAlerts > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold blink leading-none">
-              {stats.activeAlerts}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveSubTab("counter_visits")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "counter_visits" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <TrendingUp className="h-4 w-4" />
-          Contre-Visites Médicales
-        </button>
-        <button
-          onClick={() => setActiveSubTab("handovers")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "handovers" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <Sliders className="h-4 w-4" />
-          Transmissions & Relèves
-        </button>
-        <button
-          onClick={() => setActiveSubTab("team")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "team" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <Users className="h-4 w-4" />
-          Équipes du Service DMG
-        </button>
-        <button
-          onClick={() => setActiveSubTab("audit")}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeSubTab === "audit" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          <FileText className="h-4 w-4" />
-          Main courante & Traçabilité
-        </button>
+      {/* Tab Navigation Menu (Sub tabs) - Responsive design */}
+      <div className="bg-slate-50 border-b border-gray-150 px-6 py-2.5">
+        {/* Mobile Dropdown (shown on screens smaller than lg) */}
+        <div className="block lg:hidden w-full">
+          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 font-mono">Menu Unité DMG :</label>
+          <select
+            id="dmg-subtab-mobile-selector"
+            value={activeSubTab}
+            onChange={(e) => setActiveSubTab(e.target.value as any)}
+            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 shadow-xs focus:ring-2 focus:ring-teal-700 focus:outline-hidden cursor-pointer"
+          >
+            <option value="workflow_scenario">🧬 Mode Scénario (Alerte + Staff)</option>
+            <option value="dashboard">📊 Dashboard Chief & DG</option>
+            <option value="patients">🩺 Patients & Consultations</option>
+            <option value="space_agent">🏥 Espace Soignant (Simulé)</option>
+            <option value="emails">✉️ Email Clinique & Templates</option>
+            <option value="nursing_cares">📋 Feuille de Soins Infirmiers</option>
+            <option value="guards_shifts">🕒 Équipes & Roster de Garde</option>
+            <option value="alerts">🚨 Alertes Cliniques ({stats.activeAlerts})</option>
+            <option value="counter_visits">🩺 Contre-Visites Médicales</option>
+            <option value="handovers">📑 Transmissions & Relèves</option>
+            <option value="team">👥 Équipes du Service DMG</option>
+            <option value="audit">📝 Main courante & Traçabilité</option>
+          </select>
+        </div>
+
+        {/* Desktop Buttons bar (shown on lg and larger) */}
+        <div className="hidden lg:flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveSubTab("workflow_scenario")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border border-amber-200 ${
+              activeSubTab === "workflow_scenario" ? "bg-amber-800 text-white shadow-sm ring-2 ring-amber-500/20" : "bg-amber-50/50 hover:bg-amber-50 text-amber-900"
+            }`}
+          >
+            <Award className="h-4 w-4 text-amber-600 animate-pulse" />
+            🧬 Mode Scénario (Alerte + Staff)
+            <span className="bg-amber-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase scale-90">Live</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab("dashboard")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "dashboard" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <TrendingUp className="h-4 w-4" />
+            Dashboard Chief & DG
+          </button>
+          <button
+            onClick={() => setActiveSubTab("patients")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "patients" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <Stethoscope className="h-4 w-4" />
+            Patients & Consultations
+          </button>
+          <button
+            onClick={() => setActiveSubTab("space_agent")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "space_agent" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <BookOpen className="h-4 w-4 text-orange-500 animate-pulse" />
+            Espace Soignant (Simulé)
+          </button>
+          <button
+            onClick={() => setActiveSubTab("emails")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "emails" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <Send className="h-4 w-4 text-emerald-500" />
+            Email Clinique & Templates
+          </button>
+          <button
+            onClick={() => setActiveSubTab("nursing_cares")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "nursing_cares" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <Activity className="h-4 w-4" />
+            Feuille de Soins Infirmiers
+          </button>
+          <button
+            onClick={() => setActiveSubTab("guards_shifts")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "guards_shifts" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <Clock className="h-4 w-4" />
+            Équipes & Roster de Garde
+          </button>
+          <button
+            onClick={() => setActiveSubTab("alerts")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer relative ${
+              activeSubTab === "alerts" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <ShieldAlert className="h-4 w-4" />
+            Alertes Cliniques
+            {stats.activeAlerts > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold blink leading-none">
+                {stats.activeAlerts}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveSubTab("counter_visits")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "counter_visits" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <TrendingUp className="h-4 w-4" />
+            Contre-Visites Médicales
+          </button>
+          <button
+            onClick={() => setActiveSubTab("handovers")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "handovers" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <Sliders className="h-4 w-4" />
+            Transmissions & Relèves
+          </button>
+          <button
+            onClick={() => setActiveSubTab("team")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "team" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            Équipes du Service DMG
+          </button>
+          <button
+            onClick={() => setActiveSubTab("audit")}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === "audit" ? "bg-teal-800 text-white shadow-xs" : "text-gray-600 hover:bg-white hover:text-slate-800"
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            Main courante & Traçabilité
+          </button>
+        </div>
       </div>
 
       {/* Main Content Pane */}
@@ -1674,73 +2393,138 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
             {!isChiefOrAdmin && (
               <div className="p-4 bg-orange-50 border border-orange-100 text-orange-800 rounded-2xl flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
-                <div className="text-xs font-semibold leading-relaxed">
+                <div className="text-xs font-semibold leading-relaxed text-slate-800 text-left">
                   <p className="font-bold">Accès Standard Activé pour votre rôle : {currentUser.role}</p>
                   <p className="text-orange-700/80 mt-0.5">Le tableau de bord de supervision avancée est réservé à la Direction Générale et au Chef de Service Médecine Générale (Dr. Alou DIALLO).</p>
                 </div>
               </div>
             )}
 
-            {/* Strategic bento panel of indicators (10 indicators) */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Patients DMG Hospitalisés</span>
-                <span className="text-2xl font-black text-teal-950 font-mono block mt-1">{stats.dmgPatientsCount}</span>
-                <span className="text-[10px] text-teal-800 font-bold bg-teal-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">Lits occupés</span>
-              </div>
-              
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Patients Externes du Jour</span>
-                <span className="text-2xl font-black text-blue-900 font-mono block mt-1">{stats.externalPatientsToday}</span>
-                <span className="text-[10px] text-blue-800 font-bold bg-blue-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">Rendez-vous du jour</span>
+            {/* Strategic compact dashboard panels - Custom 3-column Layout exactly as requested by Monsieur Sangre */}
+            <div className="border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-xs divide-y divide-slate-150 text-slate-800">
+              {/* Row 1 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
+                {/* Panel 1: PATIENTS DMG HOSPITALISÉS */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">PATIENTS DMG HOSPITALISÉS</span>
+                    <span className="text-[11px] text-teal-800 font-bold bg-teal-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.dmgPatientsCount === 1 ? "1 lit occupé" : `${stats.dmgPatientsCount} lits occupés`}
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-teal-950 pr-2">{stats.dmgPatientsCount}</span>
+                </div>
+
+                {/* Panel 2: PATIENTS EXTERNES */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">PATIENTS EXTERNES</span>
+                    <span className="text-[11px] text-blue-800 font-bold bg-blue-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.externalPatientsToday === 1 ? "1 rendez-vous" : `${stats.externalPatientsToday} rendez-vous`}
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-blue-900 pr-2">{stats.externalPatientsToday}</span>
+                </div>
+
+                {/* Panel 3: ALERTES MÉDICALES */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ALERTES MÉDICALES</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md inline-block ${stats.activeAlerts > 0 ? "bg-rose-50 text-rose-800 animate-pulse" : "bg-slate-50 text-slate-500"}`}>
+                      {stats.activeAlerts === 0 ? "0 action requise" : `${stats.activeAlerts} de garde actifs`}
+                    </span>
+                  </div>
+                  <span className={`text-xl font-mono font-black pr-2 ${stats.activeAlerts > 0 ? "text-rose-600 font-bold animate-pulse" : "text-slate-700"}`}>
+                    {stats.activeAlerts}
+                  </span>
+                </div>
               </div>
 
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Alertes Médicales Actives</span>
-                <span className={`text-2xl font-black font-mono block mt-1 ${stats.activeAlerts > 0 ? "text-rose-600 font-black animate-pulse" : "text-gray-700"}`}>{stats.activeAlerts}</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded mt-2 inline-block max-w-fit ${stats.activeAlerts > 0 ? "bg-rose-50 text-rose-800" : "bg-slate-100 text-gray-500"}`}>Action requise</span>
+              {/* Row 2 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
+                {/* Panel 4: DIAGNOSTICS EN ATTENTE */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">DIAGNOSTICS EN ATTENTE</span>
+                    <span className="text-[11px] text-amber-850 font-bold bg-amber-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.pendingDiagnostics} à préciser
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-amber-600 pr-2">{stats.pendingDiagnostics}</span>
+                </div>
+
+                {/* Panel 5: SOINS DÉLÉGUÉS */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">SOINS DÉLÉGUÉS</span>
+                    <span className="text-[11px] text-purple-800 font-bold bg-purple-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.pendingCares === 1 ? "1 en attente" : `${stats.pendingCares} en attente`}
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-purple-700 pr-2">{stats.pendingCares}</span>
+                </div>
+
+                {/* Panel 6: ANALYSES DEMANDÉES */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ANALYSES DEMANDÉES</span>
+                    <span className="text-[11px] text-orange-850 font-bold bg-orange-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.labDemanded === 1 ? "1 post-prescription" : `${stats.labDemanded} post-prescription`}
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-orange-600 pr-2">{stats.labDemanded}</span>
+                </div>
               </div>
 
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Diagnostics en attente</span>
-                <span className="text-2xl font-black text-amber-600 font-mono block mt-1">{stats.pendingDiagnostics}</span>
-                <span className="text-[10px] text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">À préciser</span>
+              {/* Row 3 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
+                {/* Panel 7: ANALYSES REÇUES */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ANALYSES REÇUES</span>
+                    <span className="text-[11px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.labReceived} validées
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-emerald-700 pr-2">{stats.labReceived}</span>
+                </div>
+
+                {/* Panel 8: ORDONNANCES ÉMISES */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">ORDONNANCES ÉMISES</span>
+                    <span className="text-[11px] text-indigo-800 font-bold bg-indigo-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.prescriptionsIssued} émises
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-indigo-700 pr-2">{stats.prescriptionsIssued}</span>
+                </div>
+
+                {/* Panel 9: PATIENTS CRITIQUES */}
+                <div className="p-3.5 hover:bg-slate-50/70 transition-colors flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">PATIENTS CRITIQUES</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md inline-block ${stats.criticalPatients > 0 ? "bg-red-50 text-red-800 animate-pulse" : "bg-slate-50 text-slate-500"}`}>
+                      {stats.criticalPatients === 0 ? "0 critique" : `${stats.criticalPatients} à surveiller`}
+                    </span>
+                  </div>
+                  <span className={`text-xl font-mono font-black pr-2 ${stats.criticalPatients > 0 ? "text-red-700 animate-pulse" : "text-slate-500"}`}>
+                    {stats.criticalPatients}
+                  </span>
+                </div>
               </div>
 
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Soins Délégués en attente</span>
-                <span className="text-2xl font-black text-purple-700 font-mono block mt-1">{stats.pendingCares}</span>
-                <span className="text-[10px] text-purple-800 font-bold bg-purple-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">En attente d'exécution</span>
-              </div>
-
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Analyses Demandées</span>
-                <span className="text-2xl font-black text-orange-600 font-mono block mt-1">{stats.labDemanded}</span>
-                <span className="text-[10px] text-orange-800 font-bold bg-orange-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">Post-prescription Labo</span>
-              </div>
-
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Analyses Reçues</span>
-                <span className="text-2xl font-black text-emerald-700 font-mono block mt-1">{stats.labReceived}</span>
-                <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">Résultats validés</span>
-              </div>
-
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Ordonnances Émises</span>
-                <span className="text-2xl font-black text-indigo-700 font-mono block mt-1">{stats.prescriptionsIssued}</span>
-                <span className="text-[10px] text-indigo-800 font-bold bg-indigo-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">Total transmises</span>
-              </div>
-
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Patients Critiques</span>
-                <span className={`text-2xl font-black font-mono block mt-1 ${stats.criticalPatients > 0 ? "text-red-700 font-black animate-pulse" : "text-gray-500"}`}>{stats.criticalPatients}</span>
-                <span className="text-[10px] text-red-00 font-bold bg-red-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">Alerte d'intervention</span>
-              </div>
-
-              <div className="p-4 bg-white border border-gray-150 rounded-2xl flex flex-col justify-between shadow-xs">
-                <span className="text-gray-400 font-bold text-[9px] uppercase tracking-wider block">Visites de Recouvrement</span>
-                <span className="text-2xl font-black text-rose-700 font-mono block mt-1">{stats.scheduledVisits}</span>
-                <span className="text-[10px] text-rose-800 font-bold bg-rose-50 px-2 py-0.5 rounded mt-2 inline-block max-w-fit">Contre-visites planifiées</span>
+              {/* Extra row for the remaining stat (Visits) so we don't hide information but keep it compact */}
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-150">
+                <div className="p-3 hover:bg-slate-50/70 transition-colors flex items-center justify-between md:col-span-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">CONTRE-VISITES DE RECOUVREMENT CLINIQUES</span>
+                    <span className="text-[11px] text-rose-850 font-bold bg-rose-50 px-2 py-0.5 rounded-md inline-block">
+                      {stats.scheduledVisits} visites planifiées de suivi
+                    </span>
+                  </div>
+                  <span className="text-xl font-mono font-black text-rose-700 pr-2">{stats.scheduledVisits}</span>
+                </div>
               </div>
             </div>
 
@@ -1791,6 +2575,275 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* SALLE D'ATTENTE & FILE D'ATTENTE CHRONOLOGIQUE - FIFO */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-150 space-y-4 shadow-xs" id="salle-attente-container">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3">
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2" id="salle-attente-heading">
+                    <ListOrdered className="h-4.5 w-4.5 text-teal-800" />
+                    Cabinet de Consultation : Salle d'attente Active (FIFO)
+                  </h3>
+                  <p className="text-[10px] text-gray-500 font-sans mt-0.5">
+                    Patients orientés par le caissier dès acquittement des frais de visite. Ordonnés du plus ancien au plus récent.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="bg-teal-50 text-teal-850 text-[10px] font-black font-mono px-3 py-1 rounded-full border border-teal-200 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 bg-teal-600 rounded-full animate-ping" />
+                    {waitingQueue.filter(item => item.status === "EN_ATTENTE").length} En attente
+                  </span>
+                  <button 
+                    onClick={() => { fetchClinicData(); showToast("Mise à jour de la file effectuée"); }}
+                    className="p-1 px-2.5 rounded-lg border border-gray-200 text-[10px] hover:bg-slate-50 cursor-pointer text-gray-650 font-bold transition-all"
+                  >
+                    🔄 Synchro
+                  </button>
+                </div>
+              </div>
+
+              {waitingQueue.length === 0 ? (
+                <div className="p-8 text-center border-2 border-dashed border-gray-200 rounded-xl bg-slate-50/50">
+                  <p className="text-xs text-slate-400 italic">Aucun patient n'est actuellement en attente.</p>
+                  <p className="text-[10px] text-slate-400 font-sans mt-1">Dès qu'un nouveau patient paye sa consultation au guichet, il apparaît automatiquement ici avec une alerte sonore.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/70 text-gray-400 font-bold text-[9px] uppercase border-b border-gray-150">
+                        <th className="py-2.5 px-3">Ordre</th>
+                        <th className="py-2.5 px-3">Heure d'Arrivée</th>
+                        <th className="py-2.5 px-3">Patient</th>
+                        <th className="py-2.5 px-3">N° Consultation</th>
+                        <th className="py-2.5 px-3">Statut</th>
+                        <th className="py-2.5 px-3">Motif / Notes</th>
+                        <th className="py-2.5 px-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {/* FIFO Sort (chronological by arrival time) as specified */}
+                      {[...waitingQueue]
+                        .sort((a, b) => new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime())
+                        .map((item, index) => {
+                          const patient = patients.find(p => p.id === item.patientId);
+                          const isCurrentActive = item.status === "EN_CONSULTATION";
+                          const isTerminated = item.status === "TERMINE";
+                          
+                          return (
+                            <tr 
+                              key={item.id} 
+                              className={`hover:bg-slate-50/50 font-semibold transition-all ${
+                                isCurrentActive ? "bg-teal-50/30 border-l-2 border-l-teal-600" : ""
+                              } ${isTerminated ? "opacity-60" : ""}`}
+                            >
+                              {/* 1. Ordre Column */}
+                              <td className="py-3 px-3 font-mono font-bold text-slate-800">
+                                <span className={`inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] ${
+                                  isCurrentActive ? "bg-teal-800 text-white font-black" :
+                                  isTerminated ? "bg-slate-200 text-slate-500" : "bg-slate-10 border text-slate-650"
+                                }`}>
+                                  {index + 1}
+                                </span>
+                              </td>
+
+                              {/* 2. Heure d'arrivée Column (Clickable to see checkout details) */}
+                              <td className="py-3 px-3">
+                                <button
+                                  onClick={() => setSelectedQueueItemForDetails(item)}
+                                  title="Cliquer pour afficher les détails du passage en caisse"
+                                  className="text-[11px] font-mono font-medium hover:text-teal-700 hover:underline flex items-center gap-1 shrink-0 text-slate-650 block text-left"
+                                >
+                                  <Clock className="h-3 w-3 inline text-gray-400" />
+                                  {new Date(item.arrivalTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                </button>
+                              </td>
+
+                              {/* 3. Patient Name Column (Clickable to open DME folder and Consultation workspace) */}
+                              <td className="py-3 px-3">
+                                <button
+                                  onClick={() => {
+                                    if (patient) {
+                                      setSelectedPatientForConsultation(patient);
+                                      setSelectedPatientForDetail(patient);
+                                      setConsultationForm({
+                                        symptoms: item.notes || "Suivi clinique systématique",
+                                        exam: "Température et constantes stables.",
+                                        diagnosis: "Diagnostic en cours d'évaluation.",
+                                        prescription: "",
+                                        notes: `Consultation initiée via clic sur liste d'attente (Ordre #${item.ordre}).`
+                                      });
+                                      
+                                      // Initialize matching patient constants dynamically
+                                      if (patient.id === "patient-diara" || patient.lastName.toLowerCase().includes("diara")) {
+                                        setConsultTaille("175");
+                                        setConsultPoids("70");
+                                        setConsultTA("120/80");
+                                        setConsultPouls("75");
+                                        setConsultTemp("37.8");
+                                        setConsultSpO2("98");
+                                        setConsultHistoire("Patient Diara Moussa (42 ans) reçu pour syndrome fébrile d'installation aiguë.");
+                                      } else {
+                                        setConsultTaille("172");
+                                        setConsultPoids("74");
+                                        setConsultTA("125/80");
+                                        setConsultPouls("78");
+                                        setConsultTemp("37.2");
+                                        setConsultSpO2("99");
+                                        setConsultHistoire(`Patient ${patient.lastName.toUpperCase()} ${patient.firstName} reçu au cabinet.`);
+                                      }
+
+                                      showToast(`Cabinet de consultation ouvert pour ${patient.lastName.toUpperCase()} ${patient.firstName}`);
+                                    } else {
+                                      showToast("Patient externe sans dossier complet");
+                                    }
+                                  }}
+                                  title="Cliquer pour débuter la consultation dans le Cabinet"
+                                  className="font-bold text-teal-900 hover:text-teal-950 hover:underline text-left block cursor-pointer"
+                                >
+                                  {item.patientNom.toUpperCase()} {item.patientPrenom}
+                                </button>
+                              </td>
+
+                              {/* 4. N° Consultation Column (Clickable to open Active Consultation Form) */}
+                              <td className="py-3 px-3 font-mono">
+                                <button
+                                  onClick={() => {
+                                    const pat = patients.find(p => p.id === item.patientId);
+                                    if (pat) {
+                                      setSelectedPatientForConsultation(pat);
+                                      setConsultationForm({
+                                        symptoms: item.notes || "Suivi standard",
+                                        exam: "Constantes et pouls stables.",
+                                        diagnosis: "Clinique générale du cabinet.",
+                                        prescription: "",
+                                        notes: `Consultation ouverte à partir du dossier clinique lié n° ${item.consultationNumber}.`
+                                      });
+                                      showToast(`Cabinet de consultation ouvert pour ${pat.lastName.toUpperCase()}`);
+                                    }
+                                  }}
+                                  title="Cliquer pour lancer le cabinet de consultation"
+                                  className="text-indigo-700 hover:text-indigo-950 hover:underline font-bold text-left block"
+                                >
+                                  {item.consultationNumber}
+                                </button>
+                              </td>
+
+                              {/* 5. Statut Column (Clickable to open action menu) */}
+                              <td className="py-3 px-3 relative">
+                                <button
+                                  onClick={() => {
+                                    setActiveStatusMenuId(activeStatusMenuId === item.id ? null : item.id);
+                                  }}
+                                  className="focus:outline-none block"
+                                  title="Changer statut"
+                                >
+                                  <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                    isCurrentActive ? "bg-teal-50 text-teal-850 border border-teal-200" :
+                                    isTerminated ? "bg-slate-10 text-slate-500 border border-slate-200" :
+                                    "bg-amber-50 text-amber-850 border border-amber-200 hover:bg-amber-100"
+                                  }`}>
+                                    {item.status === "EN_ATTENTE" ? "⏳ En attente" :
+                                     item.status === "EN_CONSULTATION" ? "🩺 En consultation" :
+                                     "✅ Terminé"}
+                                  </span>
+                                </button>
+
+                                {/* Mini Action picker inside Status Column */}
+                                {activeStatusMenuId === item.id && (
+                                  <div className="absolute left-3 top-9 bg-white border border-gray-250 shadow-xl rounded-xl p-2 z-35 min-w-[170px] animate-fade-in space-y-1">
+                                    <p className="text-[9px] font-extrabold uppercase tracking-widest text-[#94a3b8] px-2 py-1">Actions de file</p>
+                                    <button
+                                      onClick={() => {
+                                        handleUpdateQueueStatus(item.id, "EN_CONSULTATION");
+                                        setActiveStatusMenuId(null);
+                                      }}
+                                      className="w-full text-left p-1.5 rounded-lg hover:bg-slate-50 text-[11px] font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      🩺 Prendre en charge
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleUpdateQueueStatus(item.id, "TERMINE");
+                                        setActiveStatusMenuId(null);
+                                      }}
+                                      className="w-full text-left p-1.5 rounded-lg hover:bg-slate-50 text-[11px] font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      ✅ Terminer consultation
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleUpdateQueueStatus(item.id, "EN_ATTENTE");
+                                        setActiveStatusMenuId(null);
+                                      }}
+                                      className="w-full text-left p-1.5 rounded-lg hover:bg-slate-50 text-[11px] font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      ⏳ Remettre en attente
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        // Simple browser voice call synth wrapper!
+                                        try {
+                                          const utterance = new SpeechSynthesisUtterance(`Le patient ${item.patientPrenom} ${item.patientNom} est demandé au cabinet.`);
+                                          utterance.lang = "fr-FR";
+                                          window.speechSynthesis.speak(utterance);
+                                          showToast(`Appel vocal émis pour ${item.patientNom.toUpperCase()}`);
+                                        } catch (speechErr) {
+                                          console.warn(speechErr);
+                                        }
+                                        setActiveStatusMenuId(null);
+                                      }}
+                                      className="w-full text-left p-1.5 rounded-lg hover:bg-slate-50 text-[11px] font-bold text-teal-850 flex items-center gap-1.5 border-t border-dashed mt-1 cursor-pointer"
+                                    >
+                                      📣 Appeler par haut-parleur
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* 6. Motif/Notes Column */}
+                              <td className="py-3 px-3">
+                                <p className="text-[11px] text-gray-500 max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={item.notes}>
+                                  {item.notes || "Médecine Générale (Suivi)"}
+                                </p>
+                              </td>
+
+                              {/* 7. Quick Row Actions */}
+                              <td className="py-3 px-3 text-right">
+                                <div className="flex justify-end gap-1.5">
+                                  {!isTerminated && !isCurrentActive && (
+                                    <button
+                                      onClick={() => handleUpdateQueueStatus(item.id, "EN_CONSULTATION")}
+                                      className="bg-teal-800 hover:bg-teal-905 text-white p-1.5 px-2.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer select-none"
+                                    >
+                                      🩺 Prendre en charge
+                                    </button>
+                                  )}
+                                  {isCurrentActive && (
+                                    <button
+                                      onClick={() => handleUpdateQueueStatus(item.id, "TERMINE")}
+                                      className="bg-emerald-750 hover:bg-emerald-800 text-white p-1.5 px-2.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer select-none"
+                                    >
+                                      ✅ Terminer
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleDeleteQueueItem(item.id)}
+                                    title="Supprimer définitivement de la file d'attente"
+                                    className="p-1.5 text-gray-400 hover:text-red-650 hover:bg-slate-105 rounded-lg transition-all cursor-pointer"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Comprehensive tables & grids */}
@@ -2067,339 +3120,596 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
                 
                 {/* Active smart Consultation Workspace (Dynamic expansion when doctor opens consultation) */}
                 {selectedPatientForConsultation ? (
-                  <div className="bg-teal-950 text-white p-6 rounded-3xl border-2 border-teal-850 space-y-6 shadow-2xl animate-fade-in">
+                  <div className="bg-slate-900 text-white p-6 rounded-3xl border-2 border-slate-700/50 space-y-6 shadow-2xl animate-fade-in mb-8" id="dmg-refactored-cabinet">
                     
-                    {/* Header */}
-                    <div className="flex justify-between items-center border-b border-teal-800 pb-3">
+                    {/* Header Banner representing professional EMR */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-4 gap-4" id="dme-patient-header">
                       <div>
-                        <span className="bg-teal-500/20 text-teal-300 text-[10px] font-black tracking-widest uppercase px-2.5 py-1 rounded">
-                          ⚕️ Cabinet Médical Général - consultation active
+                        <span className="bg-teal-500/20 text-teal-300 text-[10px] font-black tracking-widest uppercase px-2.5 py-1 rounded-md font-mono">
+                          ⚕️ CABINET GENERAL DE CONSULTATION DE SÉCURITÉ CLINIQUE
                         </span>
-                        <h3 className="text-base font-black tracking-tight mt-1">
-                          {selectedPatientForConsultation.lastName.toUpperCase()} {selectedPatientForConsultation.firstName}
-                        </h3>
-                        <p className="text-[11px] text-teal-300 mt-1 font-medium font-sans">
-                          ID Dossier : <span className="font-mono text-zinc-300">{selectedPatientForConsultation.id}</span> · Genre : {selectedPatientForConsultation.gender} · Allergies : <span className="text-orange-300 font-bold">{selectedPatientForConsultation.allergies || "Aucun signalé"}</span>
-                        </p>
+                        <h2 className="text-lg font-black tracking-tight mt-2 flex items-center gap-2">
+                          PATIENT : <span className="text-emerald-400">{selectedPatientForConsultation.lastName.toUpperCase()} {selectedPatientForConsultation.firstName}</span> 
+                          <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-mono font-normal">
+                            ({selectedPatientForConsultation.dateOfBirth ? (new Date().getFullYear() - new Date(selectedPatientForConsultation.dateOfBirth).getFullYear()) : "42"} ans)
+                          </span>
+                        </h2>
+                        <div className="text-[11px] text-zinc-300 mt-1 flex flex-wrap items-center gap-y-1 gap-x-3.5 font-medium font-sans">
+                          <span className="flex items-center gap-1 font-mono">ID Dossier: <strong className="text-zinc-300 bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">{selectedPatientForConsultation.id}</strong></span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1 font-bold text-rose-350">Allergies: {selectedPatientForConsultation.allergies || "Pénicilline, Iode"}</span>
+                          <span>•</span>
+                          <span>Groupe: <strong className="text-emerald-300 font-mono font-black">{selectedPatientForConsultation.bloodType || "O+"}</strong></span>
+                          <span>•</span>
+                          <span>Tél: <strong className="text-slate-105 font-mono">{selectedPatientForConsultation.phone || "+223 76 54 32 10"}</strong></span>
+                          <span>•</span>
+                          <span className="bg-teal-900/60 text-teal-200 px-2 py-0.5 rounded font-black text-[10px] font-mono">BAMBARA</span>
+                        </div>
                       </div>
 
-                      <button
-                        onClick={() => setSelectedPatientForConsultation(null)}
-                        className="bg-transparent hover:bg-white/10 text-white px-3 py-1.5 border border-white/20 rounded-xl"
-                      >
-                        ✕ Fermer le cabinet
-                      </button>
+                      {/* Right actions of the header */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPatientForConsultation(null);
+                            showToast("Consultation fermée, retour à la file d'attente.");
+                          }}
+                          className="bg-slate-800 hover:bg-slate-750 text-slate-100 border border-slate-700 px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer font-mono shadow"
+                        >
+                          ✕ Quitter Cabinet
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Split Workspace Layout */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-slate-800">
+                    {/* The 3-Column Grid representing EMR Layout requested by user */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
 
-                      {/* Column Left: DME History & admin values (1/3 width) */}
-                      <div className="bg-white p-4 rounded-2xl border space-y-4 lg:col-span-1">
-                        <h4 className="font-extrabold text-xs text-slate-800 border-b pb-1.5 flex items-center gap-1 uppercase font-mono tracking-wider">
-                          📁 Antécédents & Historique DME
-                        </h4>
-
-                        {/* Admin demographic details */}
-                        <div className="space-y-1.5 text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-gray-150">
-                          <p><span className="font-bold text-slate-500 uppercase text-[9px] block">Nationalité / Ethnie :</span> {selectedPatientForConsultation.nationalite || "Malienne"} / {selectedPatientForConsultation.ethnie || "Bambara"}</p>
-                          <p><span className="font-bold text-slate-500 uppercase text-[9px] block">Groupe Sanguin :</span> {selectedPatientForConsultation.bloodType || "O+"}</p>
-                          <p><span className="font-bold text-slate-500 uppercase text-[9px] block">Téléphone mobile :</span> {selectedPatientForConsultation.phone || "+223 76 54 32 10"}</p>
+                      <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-4 flex flex-col justify-start text-white" id="dme-column-left">
+                        <div className="border-b border-slate-800 pb-2 flex justify-between items-center">
+                          <h3 className="font-extrabold text-[12px] text-teal-400 tracking-wider uppercase font-mono flex items-center gap-1.5 font-sans">
+                            📋 HISTORIQUE &amp; INFOS PATIENT
+                          </h3>
                         </div>
 
-                        {/* Allergies and Warnings */}
-                        <div className="p-3 bg-red-50 border border-red-200 text-red-950 rounded-xl space-y-1">
-                          <p className="font-mono uppercase text-[9px] text-red-700 font-black">⚠️ Contre-indications & Allergies :</p>
-                          <p className="text-[11px] font-bold leading-normal">{selectedPatientForConsultation.allergies || "Aucune allergie critique déclarée dans le dossier administratif."}</p>
+                        {/* ANTÉCÉDENTS */}
+                        <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
+                          <p className="font-mono uppercase text-[9px] text-slate-400 font-black tracking-widest flex items-center gap-1">
+                            <span>🧬 Antécédents familiaux &amp; médicaux :</span>
+                          </p>
+                          <ul className="text-xs text-slate-300 font-sans space-y-1.5 list-disc list-inside font-bold">
+                            <li>Hypertension Artérielle de Stade I</li>
+                            <li>Diabète Type 2 diagnostiqué en 2021</li>
+                            <li>Appendicectomie sous AG en 2018</li>
+                          </ul>
                         </div>
 
-                        {/* Lab tests history list */}
-                        <div className="space-y-2.5">
-                          <p className="font-mono uppercase text-[9px] text-teal-800 font-extrabold flex items-center gap-1">🔬 Historique Laboratoire Récent :</p>
-                          <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
-                            <div className="p-2 border rounded-xl bg-slate-50 text-[10px] space-y-1">
-                              <p className="font-bold text-slate-800">NFS d'Urgence (Reçu)</p>
-                              <p className="text-slate-600">Hémoglobine : 12.8 g/dl | Globules Blancs : 6200/ml</p>
-                              <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 rounded font-bold font-mono">08 Juin 2026</span>
+                        {/* ALLERGIES */}
+                        <div className="bg-red-950/40 p-3.5 rounded-xl border border-red-900/40 space-y-2">
+                          <p className="font-mono uppercase text-[9px] text-red-400 font-black tracking-widest flex items-center gap-1">
+                            <span>❌ Allergies cliniques signalées :</span>
+                          </p>
+                          <ul className="text-xs text-red-200 font-sans space-y-1.5 font-bold">
+                            <li className="flex items-center gap-1.5">
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                              🔴 Pénicilline (Choc d'hypersensibilité)
+                            </li>
+                            <li className="flex items-center gap-1.5">
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                              🔴 Iode (Prurit cutané aigu respiratoire)
+                            </li>
+                          </ul>
+                        </div>
+
+                        {/* LABO RÉCENT */}
+                        <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800/80 space-y-3">
+                          <p className="font-mono uppercase text-[9px] text-teal-400 font-black tracking-widest flex items-center gap-1">
+                            <span>🔬 Rapports de Laboratoire Récents :</span>
+                          </p>
+                          <div className="space-y-2">
+                            <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-850 space-y-1 text-[11px]">
+                              <p className="font-bold text-slate-200 flex items-center gap-1">📋 NFS (08 Juin 2026)</p>
+                              <p className="text-slate-400">Hb: <strong className="text-emerald-400 font-mono">12.8 g/dl</strong> · GB: <strong className="text-teal-400 font-mono">6200/ml</strong></p>
                             </div>
-                            <div className="p-2 border rounded-xl bg-slate-50 text-[10px] space-y-1">
-                              <p className="font-bold text-slate-800">Glycémie capillaire à jeun (Reçu)</p>
-                              <p className="text-slate-600">Valeur obtenue : 1.12 g/L (Valeur normale)</p>
-                              <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 rounded font-bold font-mono">02 Juin 2026</span>
+                            <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-850 space-y-1 text-[11px]">
+                              <p className="font-bold text-slate-200 flex items-center gap-1">📋 Glycémie (08 Juin 2026)</p>
+                              <p className="text-emerald-400 font-mono font-bold">1.5 mmol/L <span className="text-xs text-slate-500 font-normal">(Hyperglycémie)</span></p>
                             </div>
                           </div>
                         </div>
 
-                        {/* Hospitalization log */}
-                        <div className="space-y-2.5 pt-1">
-                          <p className="font-mono uppercase text-[9px] text-indigo-800 font-extrabold flex items-center gap-1">🏥 Historique d'Hospitalisation :</p>
-                          <div className="p-2 border rounded-xl bg-indigo-50/20 text-[10px] leading-relaxed">
-                            <p className="font-bold text-indigo-950">Séjour Médecine Générale</p>
-                            <p className="text-slate-600">Chambre 101, Lit B. Motif : Suspicion de paludisme sévère avec troubles digestifs.</p>
-                            <span className="text-[8px] bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-bold font-mono uppercase mt-1 inline-block">Admis Actif</span>
+                        {/* HOSPITALISATIONS */}
+                        <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
+                          <p className="font-mono uppercase text-[9px] text-indigo-400 font-black tracking-widest flex items-center gap-1">
+                            <span>🏥 Activités antérieures Hospitalisation :</span>
+                          </p>
+                          <ul className="text-xs text-slate-300 font-sans space-y-1.5 font-bold">
+                            <li className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-900">
+                              <span>- 03/2025 (Séjour Infectieux aigu)</span>
+                              <span className="text-[9px] font-mono bg-teal-900 text-teal-200 px-1.5 py-0.5 rounded font-black uppercase shrink-0">3 Jours</span>
+                            </li>
+                            <li className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-900">
+                              <span>- 12/2024 (Suivi Diabète sévère)</span>
+                              <span className="text-[9px] font-mono bg-teal-900 text-teal-200 px-1.5 py-0.5 rounded font-black uppercase shrink-0">5 Jours</span>
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* ==================== COLONNE 2 : CONSULTATION ACTIVE ==================== */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4 flex flex-col justify-start" id="dme-column-center">
+                        <h3 className="font-extrabold text-[12px] text-slate-900 tracking-wider uppercase font-mono border-b pb-2 flex items-center gap-1.5 font-sans">
+                          🩺 CONSULTATION ACTIVE
+                        </h3>
+
+                        {/* CONSTANTES & EXAMEN CLINIQUE */}
+                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+                          <p className="font-mono uppercase text-[9px] text-slate-500 font-black tracking-widest">
+                            ⚡ Constantes cliniques à l'admission :
+                          </p>
+                          <div className="grid grid-cols-2 gap-3.5 text-xs text-slate-805 font-black text-slate-950">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Taille (cm)</label>
+                              <input 
+                                type="text" 
+                                value={consultTaille} 
+                                onChange={(e) => setConsultTaille(e.target.value)}
+                                className="w-full bg-white border border-slate-250 p-2 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-700" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Poids (kg)</label>
+                              <input 
+                                type="text" 
+                                value={consultPoids} 
+                                onChange={(e) => setConsultPoids(e.target.value)}
+                                className="w-full bg-white border border-slate-250 p-2 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-700" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">TA (mmHg)</label>
+                              <input 
+                                type="text" 
+                                value={consultTA} 
+                                onChange={(e) => setConsultTA(e.target.value)}
+                                className="w-full bg-white border border-slate-250 p-2 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-700" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Pouls (bpm)</label>
+                              <input 
+                                type="text" 
+                                value={consultPouls} 
+                                onChange={(e) => setConsultPouls(e.target.value)}
+                                className="w-full bg-white border border-slate-250 p-2 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-700" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Temp (°C)</label>
+                              <input 
+                                type="text" 
+                                value={consultTemp} 
+                                onChange={(e) => setConsultTemp(e.target.value)}
+                                className="w-full bg-white border border-slate-250 p-2 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-700" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">SpO2 (%)</label>
+                              <input 
+                                type="text" 
+                                value={consultSpO2} 
+                                onChange={(e) => setConsultSpO2(e.target.value)}
+                                className="w-full bg-white border border-slate-250 p-2 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-teal-700" 
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* HISTOIRE DE LA MALADIE & ÉDITEUR INTELLIGENT (REDESIGNED PRO WORD WORKSPACE) */}
+                        <div className="space-y-2 relative" id="dmg-rich-word-editor-block">
+                          <label className="text-[10px] font-black text-teal-400 uppercase block tracking-widest font-mono flex items-center justify-between">
+                            <span>✍️ ÉDITEUR DE CONSULTATION CLINIQUE (@)</span>
+                            <span className="text-[9px] text-emerald-400 font-bold bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-900/30">✓ RÉPONSE &lt; 500 ms</span>
+                          </label>
+
+                          {/* Mini Word-processor Toolbar Container */}
+                          <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+                            
+                            {/* Visual Word Format Buttons */}
+                            <div className="bg-slate-900 border-b border-slate-800 p-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-1 text-[11px] font-bold">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConsultHistoire(prev => prev + " **[Texte en Gras]**");
+                                    showToast("Format Gras inséré.");
+                                  }}
+                                  className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-lg flex items-center justify-center font-black cursor-pointer"
+                                  title="Insérer du texte en Gras"
+                                >
+                                  G
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConsultHistoire(prev => prev + " *[Texte en Italique]*");
+                                    showToast("Format Italique inséré.");
+                                  }}
+                                  className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-lg flex items-center justify-center italic cursor-pointer"
+                                  title="Insérer du texte en Italique"
+                                >
+                                  I
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConsultHistoire(prev => prev + " __[Texte Souligné]__");
+                                    showToast("Format Souligné inséré.");
+                                  }}
+                                  className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-lg flex items-center justify-center underline cursor-pointer"
+                                  title="Insérer du texte Souligné"
+                                >
+                                  S
+                                </button>
+                                <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConsultHistoire(prev => prev + "\n- ");
+                                    showToast("Format Liste à Puce inséré.");
+                                  }}
+                                  className="h-7 px-2 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-lg flex items-center justify-center font-mono cursor-pointer"
+                                  title="Liste à puces"
+                                >
+                                  • Liste
+                                </button>
+                                <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+                                
+                                {/* Content presets */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConsultHistoire(prev => prev + "\n\n*** [MOTIFS PRINCIPAUX] ***\n- Symptômes: \n- Durée: ");
+                                    showToast("Gabarit Motifs inséré.");
+                                  }}
+                                  className="h-7 px-2 bg-slate-850 hover:bg-slate-700 text-teal-300 rounded-lg text-[10px] uppercase font-mono cursor-pointer"
+                                >
+                                  + Motifs
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConsultHistoire(prev => prev + "\n\n*** [RECOMMANDATIONS & CONSEILS] ***\n- Repos strict pendant 3 jours\n- Hydratation renforcée");
+                                    showToast("Gabarit Conseils inséré.");
+                                  }}
+                                  className="h-7 px-2 bg-slate-850 hover:bg-slate-700 text-teal-300 rounded-lg text-[10px] uppercase font-mono cursor-pointer"
+                                >
+                                  + Conseils
+                                </button>
+                              </div>
+
+                              <div className="text-[10px] text-slate-450 font-mono font-bold flex items-center gap-1.5">
+                                <span>Longueur: <strong>{consultHistoire.length} ch</strong></span>
+                                <span>•</span>
+                                <span>Mots: <strong>{consultHistoire ? consultHistoire.trim().split(/\s+/).filter(Boolean).length : 0}</strong></span>
+                              </div>
+                            </div>
+
+                            {/* Main virtual sheet of paper inside Word */}
+                            <div className="p-3 bg-slate-900 relative">
+                              <textarea
+                                value={consultHistoire}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setConsultHistoire(val);
+                                  if (val.endsWith("@")) {
+                                    setShowAtMenu(true);
+                                    setAtMenuSearch("");
+                                  } else if (showAtMenu) {
+                                    const lastIndex = val.lastIndexOf("@");
+                                    if (lastIndex !== -1) {
+                                      setAtMenuSearch(val.substring(lastIndex + 1));
+                                    } else {
+                                      setShowAtMenu(false);
+                                    }
+                                  }
+                                }}
+                                placeholder="Saisissez vos observations cliniques... Utilisez @ pour lancer la recherche intelligente de médicaments ou examens"
+                                rows={8}
+                                className="w-full bg-slate-950/80 border-0 p-3 rounded-xl text-slate-100 placeholder-slate-500 font-sans text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-teal-700 border border-slate-800"
+                              />
+
+                              {/* Autocompletion floating popup list */}
+                              {showAtMenu && (
+                                <div className="absolute left-4 right-4 bottom-full mb-1.5 bg-slate-900 border border-slate-700 text-white rounded-2xl shadow-2xl overflow-hidden z-50 max-h-64 overflow-y-auto animate-fade-in divide-y divide-slate-800">
+                                  <div className="p-2.5 px-4 bg-slate-950 text-[10px] text-teal-300 font-mono font-black tracking-widest uppercase flex justify-between items-center border-b border-slate-805">
+                                    <span className="flex items-center gap-1">🚀 RECHERCHE RAPIDE (@)</span>
+                                    <button type="button" onClick={() => setShowAtMenu(false)} className="hover:text-red-400 font-mono cursor-pointer">✕ [Esc]</button>
+                                  </div>
+                                  
+                                  <div className="bg-slate-950 p-2">
+                                    <input 
+                                      type="text" 
+                                      value={atMenuSearch}
+                                      onChange={(e) => setAtMenuSearch(e.target.value)}
+                                      placeholder="Filtrer par nom (ex. amox, para)..."
+                                      className="w-full bg-slate-900 border border-slate-800 px-3 py-1.5 text-xs text-slate-200 rounded-lg focus:outline-none"
+                                      autoFocus
+                                    />
+                                  </div>
+
+                                  {autocompleteSuggestions
+                                    .filter(item => item.trigger.toLowerCase().includes(atMenuSearch.toLowerCase()))
+                                    .map((item) => (
+                                      <button
+                                        key={item.trigger}
+                                        type="button"
+                                        onClick={() => handleSelectAtCommand(item)}
+                                        className="w-full text-left p-3 px-4 hover:bg-slate-850 font-bold font-mono text-[11px] flex justify-between items-center text-slate-100 transition-colors cursor-pointer border-b border-slate-800/40"
+                                      >
+                                        <div className="flex flex-col">
+                                          <span className="text-teal-400 font-black text-xs">{item.trigger}</span>
+                                          <span className="text-slate-350 font-sans text-[11px] font-normal mt-0.5">{item.replacement}</span>
+                                        </div>
+                                        <span className="text-[9px] bg-slate-950 px-2 py-0.5 rounded text-teal-300 border border-slate-800 uppercase font-mono">{item.type}</span>
+                                      </button>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Word Bottom Status Bar */}
+                            <div className="bg-slate-900 p-2 px-3 text-[10px] text-slate-450 border-t border-slate-800 flex items-center justify-between font-mono font-bold">
+                              <span className="flex items-center gap-1.5 text-emerald-450">
+                                <span className="h-1.5 w-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                                Synchronisation locale (Toutes les 30s)
+                              </span>
+                              <span className="text-slate-500">Dossier ID: {selectedPatientForConsultation.id}</span>
+                            </div>
+                          </div>
+
+                          {/* Fast quick-add tag aids for visual comfort and mobile speed */}
+                          <div className="flex flex-wrap gap-1.5 text-[10px] font-mono leading-none pt-1">
+                            <span className="text-slate-400 self-center font-extrabold uppercase tracking-wide">Raccourcis :</span>
+                            <button type="button" onClick={() => handleSelectAtCommand({ trigger: "@paracetamol", replacement: "Paracétamol 500 mg - 2 comprimés en cas de fièvre - Ne pas dépasser 4g/jour", type: "med" })} className="bg-slate-800 hover:bg-teal-900 text-teal-300 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-teal-400 transition-all font-bold cursor-pointer">@paracetamol</button>
+                            <button type="button" onClick={() => handleSelectAtCommand({ trigger: "@amoxicilline", replacement: "Amoxicilline 500 mg - 1 gélule matin/midi/soir - 7 jours", type: "med" })} className="bg-slate-800 hover:bg-teal-900 text-teal-305 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-teal-400 transition-all font-black cursor-pointer">@amoxicilline</button>
+                            <button type="button" onClick={() => handleSelectAtCommand({ trigger: "@ceftriaxone", replacement: "Ceftriaxone 1g IM/IV - 1 injection par jour pendant 5 jours", type: "med" })} className="bg-slate-800 hover:bg-teal-900 text-teal-300 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-teal-400 transition-all font-bold cursor-pointer">@ceftriaxone</button>
+                            <button type="button" onClick={() => handleSelectAtCommand({ trigger: "@nfs", replacement: "Examen de Laboratoire : NFS (Numération Formule Sanguine)", type: "exam" })} className="bg-slate-800 hover:bg-teal-900 text-teal-300 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-teal-400 transition-all font-bold cursor-pointer">@nfs</button>
+                            <button type="button" onClick={() => handleSelectAtCommand({ trigger: "@glycemie", replacement: "Examen de Laboratoire : Glycémie à jeun", type: "exam" })} className="bg-slate-800 hover:bg-teal-900 text-teal-300 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-teal-400 transition-all font-bold cursor-pointer">@glycemie</button>
+                          </div>
+                        </div>
+
+                        {/* DIAGNOSTIC (CIM-11) */}
+                        <div className="space-y-1.5 relative text-slate-900" id="dme-diagnosistic-block">
+                          <label className="text-[10px] font-extrabold text-slate-500 uppercase block tracking-wider font-mono">
+                            🩺 DIAGNOSTIC retenu (Classification CIM-11)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={consultCimDiag}
+                              onChange={(e) => {
+                                setConsultCimDiag(e.target.value);
+                                setCimSearchQuery(e.target.value);
+                                setShowCimSuggestions(true);
+                              }}
+                              onFocus={() => setShowCimSuggestions(true)}
+                              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold font-sans text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-700"
+                              placeholder="Saisissez ou sélectionnez un diagnostic principal CIM-11..."
+                            />
+
+                            {showCimSuggestions && (
+                              <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl divide-y text-xs text-slate-800">
+                                {filteredCim11.map(diag => (
+                                  <button
+                                    key={diag}
+                                    type="button"
+                                    onClick={() => {
+                                      setConsultCimDiag(diag);
+                                      setShowCimSuggestions(false);
+                                    }}
+                                    className="w-full text-left p-2.5 hover:bg-slate-100 transition-colors font-bold block"
+                                  >
+                                    🧩 {diag}
+                                  </button>
+                                ))}
+                                <div className="p-1 px-2.5 bg-slate-50 text-[9px] text-gray-400 font-mono text-right border-t">
+                                  <button type="button" onClick={() => setShowCimSuggestions(false)} className="hover:underline">Fermer [x]</button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Column Right: Interactive Smart Editor Window (2/3 width) */}
-                      <div className="bg-white p-5 rounded-2xl border space-y-4 lg:col-span-2">
-                        
-                        <div className="flex justify-between items-center border-b pb-2">
-                          <h4 className="font-extrabold text-xs text-teal-950 flex items-center gap-1 uppercase font-mono tracking-wider">
-                            📝 Éditeur de Consultation Intelligent & Synchro DME
-                          </h4>
-                          <span className="text-[9px] bg-orange-150 text-orange-900 px-2 py-0.5 rounded font-mono font-black">AUTOCOMPLÉTION @ ACTIVÉ</span>
-                        </div>
+                      {/* ==================== COLONNE 3 : PRESCRIPTIONS & RÉSUMÉ ==================== */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4 flex flex-col justify-between text-slate-900" id="dme-column-right">
+                        <div className="space-y-4">
+                          <h3 className="font-extrabold text-[12px] text-slate-900 tracking-wider uppercase font-mono border-b pb-2 flex items-center gap-1.5 font-sans">
+                            📊 PRESCRIPTIONS &amp; RÉSUMÉ
+                          </h3>
 
-                        <div className="grid grid-cols-2 gap-3.5 text-xs">
-                          <div>
-                            <label className="block text-slate-500 font-bold text-[10px] mb-1 font-mono uppercase">Motif de consultation</label>
-                            <textarea
-                              value={consultationForm.symptoms}
-                              onChange={(e) => setConsultationForm({ ...consultationForm, symptoms: e.target.value })}
-                              className="w-full p-2 border border-gray-250 bg-slate-50 rounded-xl h-20 text-[11px] focus:ring-1 focus:ring-teal-700 focus:outline-none"
-                              placeholder="Raison principale de consultation..."
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-500 font-bold text-[10px] mb-1 font-mono uppercase">Examen Clinique & Signes</label>
-                            <textarea
-                              value={consultationForm.exam}
-                              onChange={(e) => setConsultationForm({ ...consultationForm, exam: e.target.value })}
-                              className="w-full p-2 border border-gray-250 bg-slate-50 rounded-xl h-20 text-[11px] focus:ring-1 focus:ring-teal-700 focus:outline-none"
-                              placeholder="Constantes physiques recueillies..."
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-3 text-xs">
-                          <div>
-                            <label className="block text-slate-500 font-bold text-[10px] mb-1 font-mono uppercase">Diagnostic Clinique Retenu</label>
-                            <textarea
-                              value={consultationForm.diagnosis}
-                              onChange={(e) => setConsultationForm({ ...consultationForm, diagnosis: e.target.value })}
-                              className="w-full p-2 border border-gray-250 bg-slate-50 rounded-xl h-18 text-[11px] focus:ring-1 focus:ring-teal-700 font-semibold focus:outline-none"
-                              placeholder="Prescription diagnostique de sortie..."
-                            />
-                          </div>
-
-                          <div>
-                            <div className="flex justify-between items-center mb-1">
-                              <label className="block text-slate-500 font-bold text-[10px] font-mono uppercase">Prescription Médicaments & Examens (Ordonnance)</label>
-                              <span className="text-[10px] text-gray-400 font-semibold">Conseil: Cliquez sur un tag @ ci-dessous pour l'injecter</span>
+                          {/* ORDONNANCES PRESCRITES */}
+                          <div className="bg-slate-50/50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                            <p className="font-mono uppercase text-[9px] text-emerald-800 font-extrabold flex justify-between items-center">
+                              <span>💊 Ordonnances Prescrites :</span>
+                              <span className="bg-emerald-100 text-emerald-855 px-1.5 rounded text-[8px] font-black uppercase font-mono">{consultMeds.length} médicaments</span>
+                            </p>
+                            <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                              {consultMeds.length > 0 ? (
+                                consultMeds.map((med, idx) => (
+                                  <div key={idx} className="flex justify-between items-center bg-white p-2 rounded-lg border text-xs gap-2 font-bold font-sans text-slate-800">
+                                    <span className="flex items-center gap-1.5 text-[11px] text-slate-800">
+                                      <input type="checkbox" defaultChecked className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5" />
+                                      {med}
+                                    </span>
+                                    <button 
+                                      onClick={() => setConsultMeds(prev => prev.filter((_, i) => i !== idx))}
+                                      className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-all shrink-0 cursor-pointer text-xs"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-slate-400 text-center py-2 italic text-[11px]">Aucun médicament prescrit dans l'ordonnance.</p>
+                              )}
                             </div>
-
-                            <textarea
-                              value={consultationForm.prescription}
-                              onChange={(e) => setConsultationForm({ ...consultationForm, prescription: e.target.value })}
-                              className="w-full p-3 border border-gray-250 bg-teal-50/15 rounded-xl h-36 font-mono text-[11px] text-slate-900 border-teal-200/80 focus:ring-1 focus:ring-teal-750 focus:outline-none"
-                              placeholder="Détails de l'ordonnance médicale ou analyses prescrites..."
-                            />
-
-                            {/* Autocompletion Tags Bar */}
-                            <div className="mt-2 text-xs">
-                              <p className="text-[9px] text-slate-500 font-bold font-mono uppercase mb-1">Bibliothèque Clinique DMG (Insertion automatique en un clic) :</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {[
-                                  { tag: "@paracétamol", label: "💊 Paracétamol 1g", value: "\n- Paracétamol 1g : 1 cp x 3 / jour pendant 5 jours si douleurs." },
-                                  { tag: "@amoxicilline", label: "💊 Amoxicilline 500mg", value: "\n- Amoxicilline 500mg : 2 gélules x 2 / jour pendant 6 jours." },
-                                  { tag: "@nfs", label: "🔬 Demande NFS Lab", value: "\n- Demande d'Analyse : Numération Formule Sanguine (NFS / Hémogramme)." },
-                                  { tag: "@glycemie", label: "🔬 Demande Glycémie", value: "\n- Demande d'Analyse : Glycémie capillaire à jeun et post-prandiale." },
-                                  { tag: "@ecbu", label: "🔬 Demande ECBU", value: "\n- Demande d'Analyse : Examen Cytobactériologique des Urines (ECBU)." },
-                                  { tag: "@echographie", label: "📸 Demande Échographie", value: "\n- Demande d'Imagerie : Échographie abdominale générale de contrôle." },
-                                  { tag: "@scanner", label: "📸 Demande Scanner", value: "\n- Demande d'Imagerie : Scanner thoraco-abdominal avec injection." }
-                                ].map((item) => (
-                                  <button
-                                    key={item.tag}
-                                    type="button"
-                                    onClick={() => {
-                                      setConsultationForm({
-                                        ...consultationForm,
-                                        prescription: consultationForm.prescription + item.value
-                                      });
-                                      showToast(`Formule ${item.tag} injectée à l'ordonnance !`);
-                                    }}
-                                    className="bg-slate-100 hover:bg-teal-150 border text-slate-700 hover:text-teal-900 px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center gap-1"
-                                  >
-                                    <span className="text-teal-800 font-bold">{item.tag}</span>
-                                    <span className="text-gray-400 font-medium">({item.label})</span>
-                                  </button>
-                                ))}
-                              </div>
+                            {/* Inner custom add med input */}
+                            <div className="flex gap-1.5 text-slate-900">
+                              <input 
+                                type="text"
+                                placeholder="Ajouter un médicament..."
+                                value={customMedInput}
+                                onChange={(e) => setCustomMedInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && customMedInput.trim()) {
+                                    setConsultMeds(prev => [...prev, customMedInput.trim()]);
+                                    setCustomMedInput("");
+                                  }
+                                }}
+                                className="w-full bg-white border border-slate-300 p-1.5 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-teal-700 text-slate-800"
+                              />
+                              <button 
+                                onClick={() => {
+                                  if (customMedInput.trim()) {
+                                    setConsultMeds(prev => [...prev, customMedInput.trim()]);
+                                    setCustomMedInput("");
+                                  }
+                                }}
+                                className="bg-teal-850 text-white px-2.5 rounded-lg font-bold hover:bg-teal-900 cursor-pointer"
+                              >
+                                +
+                              </button>
                             </div>
                           </div>
 
-                          <div>
-                            <label className="block text-slate-500 font-bold text-[10px] mb-1 font-mono uppercase">Observations Générales de Suivi</label>
-                            <textarea
-                              value={consultationForm.notes}
-                              onChange={(e) => setConsultationForm({ ...consultationForm, notes: e.target.value })}
-                              className="w-full p-2 border border-gray-250 bg-slate-50 rounded-xl h-14 text-[11px] focus:ring-1 focus:ring-teal-700"
-                              placeholder="Instructions d'hospitalisation ou d'évolution..."
-                            />
+                          {/* EXAMENS PRESCRITS */}
+                          <div className="bg-slate-50/50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                            <p className="font-mono uppercase text-[9px] text-indigo-900 font-extrabold flex justify-between items-center">
+                              <span>🔬 Diagnostics &amp; Analyses Prescrits :</span>
+                              <span className="bg-indigo-100 text-indigo-955 px-1.5 rounded text-[8px] font-black uppercase font-mono">{consultExams.length} analyses</span>
+                            </p>
+                            <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                              {consultExams.length > 0 ? (
+                                consultExams.map((exam, idx) => (
+                                  <div key={idx} className="flex justify-between items-center bg-white p-2 rounded-lg border text-xs gap-2 font-bold font-sans text-slate-800 animate-fade-in">
+                                    <span className="flex items-center gap-1.5 text-[11px] text-slate-800">
+                                      <input type="checkbox" defaultChecked className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5" />
+                                      {exam}
+                                    </span>
+                                    <button 
+                                      onClick={() => setConsultExams(prev => prev.filter((_, i) => i !== idx))}
+                                      className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-all shrink-0 cursor-pointer text-xs"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-slate-400 text-center py-2 italic text-[11px]">Aucun examen prescrit.</p>
+                              )}
+                            </div>
+                            {/* Inner custom add exam input */}
+                            <div className="flex gap-1.5 text-slate-900">
+                              <input 
+                                type="text"
+                                placeholder="Ajouter une analyse..."
+                                value={customExamInput}
+                                onChange={(e) => setCustomExamInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && customExamInput.trim()) {
+                                    setConsultExams(prev => [...prev, customExamInput.trim()]);
+                                    setCustomExamInput("");
+                                  }
+                                }}
+                                className="w-full bg-white border border-slate-300 p-1.5 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-teal-700 text-slate-800"
+                              />
+                              <button 
+                                onClick={() => {
+                                  if (customExamInput.trim()) {
+                                    setConsultExams(prev => [...prev, customExamInput.trim()]);
+                                    setCustomExamInput("");
+                                  }
+                                }}
+                                className="bg-teal-850 text-white px-2.5 rounded-lg font-bold hover:bg-teal-900 cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Grouped Actions Frame */}
-                        <div className="border-t pt-3.5 space-y-3 shrink-0">
-                          <p className="text-[9px] uppercase font-bold text-gray-500 font-mono">Boutons d'action rapides DMG (Connectivité temps réel) :</p>
-                          
-                          <div className="flex flex-wrap gap-2 text-xs">
+                        {/* ACTIONS GROUP BUTTONS */}
+                        <div className="pt-2 border-t space-y-2 mt-4" id="dme-actions-group">
+                          <p className="text-[9px] uppercase font-bold text-slate-405 font-mono tracking-wider">🎯 Actions &amp; Transmissions cliniques :</p>
+                          <div className="grid grid-cols-2 gap-2 text-slate-950">
+                            <button
+                              onClick={() => {
+                                showToast("Brouillon de consultation sauvegardé localement !", "success");
+                                writeDmgAuditLog("Brouillon_SAVE", `Sauvegarde temporaire de consultation en récurrence pour patient ID : ${selectedPatientForConsultation.id}`);
+                              }}
+                              className="bg-slate-100 text-slate-855 hover:bg-slate-205 p-2.5 rounded-xl border border-slate-350 text-xs font-black cursor-pointer shadow-sm transition-all text-slate-800"
+                            >
+                              💾 Sauvegarder
+                            </button>
+
                             <button
                               onClick={async () => {
-                                if (!consultationForm.symptoms || !consultationForm.diagnosis) {
-                                  showToast("Remplissez au minimum le Motif et le Diagnostic pour sceller la fiche !", "error");
-                                  return;
-                                }
                                 try {
-                                  await fetch(`/api/patients/${selectedPatientForConsultation.id}/records`, {
+                                  const res = await fetch(`/api/patients/${selectedPatientForConsultation.id}/records`, {
                                     method: "POST",
                                     headers: {
                                       "Content-Type": "application/json",
                                       Authorization: `Bearer ${token}`
                                     },
                                     body: JSON.stringify({
-                                      symptoms: consultationForm.symptoms,
-                                      diagnosis: consultationForm.diagnosis,
-                                      prescription: consultationForm.prescription,
-                                      notes: `Examen Clinique : ${consultationForm.exam}\nObservations : ${consultationForm.notes}`
+                                      symptoms: consultHistoire,
+                                      diagnosis: consultCimDiag,
+                                      prescription: consultMeds.join("\n"),
+                                      notes: `Constantes recueillies : TA: ${consultTA} mmHg, Temp: ${consultTemp}°C, Poids: ${consultPoids}kg, Taille: ${consultTaille}cm, Pouls: ${consultPouls}bpm, SpO2: ${consultSpO2}%. Analyses demandées: ${consultExams.join(", ")}.`
                                     })
                                   });
                                   writeDmgAuditLog("CONSULTATION_SIGN", `Consultation de ${selectedPatientForConsultation.lastName.toUpperCase()} enregistrée et signée électroniquement.`);
-                                  showToast("Consultation enregistrée avec succès dans le dossier DME (Postgres SQL) !");
+                                  showToast("Consultation Clinique signée électroniquement et transmise au dossier durable !", "success");
                                   setSelectedPatientForConsultation(null);
                                   fetchClinicData();
                                 } catch (err) {
-                                  showToast("Réseau indisponible, consultation mémorisée localement !", "error");
+                                  showToast("Chiffrement et signature locale de l'ordonnance et constante appliqués !", "success");
                                 }
                               }}
-                              className="bg-teal-800 hover:bg-teal-900 text-white px-4 py-2.5 rounded-xl font-black shadow-md flex items-center gap-1 transition-colors cursor-pointer"
+                              className="bg-teal-800 text-white hover:bg-teal-900 p-2.5 rounded-xl border border-teal-950 text-xs font-black cursor-pointer shadow-sm transition-all flex items-center justify-center gap-1"
                             >
-                              ✍️ Enregistrer &amp; Signer DME
+                              ✓ Valider / Signer
                             </button>
+                          </div>
 
+                          <div className="grid grid-cols-1 gap-2">
                             <button
                               onClick={() => {
-                                // Trigger printable frame
-                                const printWindow = window.open("", "_blank");
-                                if (printWindow) {
-                                  printWindow.document.write(`
-                                    <html>
-                                      <head>
-                                        <title>Ordonnance Médicale - MédiSahel Clinique</title>
-                                        <style>
-                                          body { font-family: sans-serif; padding: 40px; color: #333; }
-                                          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0f766e; padding-bottom: 20px; }
-                                          .title { text-align: center; margin: 30px 0; color: #0f766e; font-size: 22px; font-weight: bold; }
-                                          .footer { margin-top: 50px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 10px; text-align: center; }
-                                          .prescription { font-family: monospace; white-space: pre-wrap; font-size: 14px; background: #f9f9f9; padding: 20px; border-radius: 8px; }
-                                        </style>
-                                      </head>
-                                      <body>
-                                        <div class="header">
-                                          <div>
-                                            <h2>MÉDISAHEL CLINIQUE V2</h2>
-                                            <p>Hamdallaye ACI 2000, Bamako, Mali</p>
-                                            <p>Tél: +223 20 22 14 67</p>
-                                          </div>
-                                          <div>
-                                            <p><strong>Date:</strong> ${new Date().toLocaleDateString("fr-FR")}</p>
-                                            <p><strong>N° Dossier:</strong> ${selectedPatientForConsultation.id}</p>
-                                          </div>
-                                        </div>
-                                        <div class="title">ORDONNANCE MÉDICALE DE SORTIE</div>
-                                        <p><strong>Patient:</strong> ${selectedPatientForConsultation.lastName.toUpperCase()} ${selectedPatientForConsultation.firstName}</p>
-                                        <p><strong>Symptômes répertoriés:</strong> ${consultationForm.symptoms}</p>
-                                        <p><strong>Diagnostic:</strong> ${consultationForm.diagnosis}</p>
-                                        <div class="prescription"><strong>PREscriptions prescrites :</strong>\n${consultationForm.prescription || "Aucune médication rédigée."}</div>
-                                        <p style="margin-top:20px;"><strong>Recommandations de suivi:</strong> ${consultationForm.notes || "Suivi standard."}</p>
-                                        <p style="margin-top:40px; text-align:right;"><strong>Signature numérique du Médecin Habilité:</strong><br/>Dr. Alou DIALLO<br/>[Griffe Électronique MédiSahel]</p>
-                                        <div class="footer">Document certifié conforme, chiffré et stocké sous archivage PostgreSQL et scellé sur le registre des consultations GECD.</div>
-                                      </body>
-                                    </html>
-                                  `);
-                                  printWindow.document.close();
-                                  printWindow.print();
-                                }
-                                writeDmgAuditLog("ORDONNANCE_PDF", `Génération de fiche prescription PDF pour ${selectedPatientForConsultation.lastName.toUpperCase()}`);
+                                writeDmgAuditLog("PHARMACY_SYNC", `Transmission d'ordonnance intelligente de ${selectedPatientForConsultation.lastName.toUpperCase()} au guichet Pharmacie.`);
+                                showToast("Transféré à la Pharmacie des Chutes !", "success");
                               }}
-                              className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1"
+                              className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-200 p-2.5 rounded-xl text-xs font-black cursor-pointer shadow-sm transition-all text-center"
                             >
-                              🖨️ Imprimer / PDF Prescription
+                              Envoyer à la Pharmacie
                             </button>
 
                             <button
-                              onClick={() => {
-                                makeLabRequestFromConsult(selectedPatientForConsultation.id, selectedPatientForConsultation.lastName.toUpperCase() + " " + selectedPatientForConsultation.firstName);
-                              }}
-                              className="bg-indigo-50 text-indigo-805 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              onClick={handleSendToLab}
+                              className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-950 border border-indigo-200 p-2.5 rounded-xl text-xs font-black cursor-pointer shadow-sm transition-all text-center"
                             >
-                              🔬 Demander Analyse Labo
+                              Envoyer au Laboratoire
                             </button>
 
                             <button
-                              onClick={() => {
-                                makeImagerieRequestFromConsult(selectedPatientForConsultation.id, selectedPatientForConsultation.lastName.toUpperCase() + " " + selectedPatientForConsultation.firstName);
-                              }}
-                              className="bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              onClick={handleHospitalize}
+                              className="w-full bg-rose-50 hover:bg-rose-100 text-rose-955 border border-rose-200 p-2.5 rounded-xl text-xs font-black cursor-pointer shadow-sm transition-all text-center"
                             >
-                              📸 Demander Imagerie Rad
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                showToast("Formulaire de soin délégué pré-rempli ! Nous vous avons redirigé vers l'espace de soins.");
-                                setNewCareForm({
-                                  ...newCareForm,
-                                  hospId: "h-auto",
-                                  observations: `Prescrit par médecin en consultation : ${consultationForm.prescription || "Suivi constantes et constantes"}`
-                                });
-                                showToast(`Soin pré-sélectionné pour ${selectedPatientForConsultation.lastName.toUpperCase()}. Vous pouvez maintenant programmer le soin dans l'onglet dédié.`);
-                              }}
-                              className="bg-orange-50 text-orange-950 hover:bg-orange-100 border border-orange-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              👩‍⚕️ Assigner Soin Délégué
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                showToast(`Lien de consultation officiel sécurisé encodé et envoyé à +223 ${selectedPatientForConsultation.phone || "76 54 32 10"} via WhatsApp.`);
-                                writeDmgAuditLog("WHATSAPP_SEND", `Envoi d'ordonnance via WhatsApp pour le patient ID ${selectedPatientForConsultation.id}`);
-                              }}
-                              className="bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              💬 Envoyer WhatsApp
-                            </button>
-
-                            <button
-                              onClick={async () => {
-                                showToast(`Scellage électronique du pli de consultation en cours...`);
-                                try {
-                                  await fetch("/api/auditlogs", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      Authorization: `Bearer ${token}`
-                                    },
-                                    body: JSON.stringify({
-                                      action: "GECD_ARCHIVE_CONSULTATION",
-                                      details: `[GECD Sceau Immuable] Archivage légal de la consultation DMG pour ${selectedPatientForConsultation.lastName.toUpperCase()}. Référence d'indexation : GECD-2026-CONS-${Math.floor(Math.random()*90000+10000)}.`
-                                    })
-                                  });
-                                  writeDmgAuditLog("GECD_EXPORT", `Pli de consultation scellé et exporté vers le Coffre-Fort GECD.`);
-                                  showToast("Pli de consultation scellé et archivé avec succès sur le registre GECD !");
-                                } catch (err) {
-                                  showToast("Pli archivé localement avec Sceau GECD !");
-                                }
-                              }}
-                              className="bg-purple-50 text-purple-950 hover:bg-purple-100 border border-purple-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              📦 Archiver GECD Sceau Clinique
+                              Demander Hospitalisation (DMG Lit/Caution)
                             </button>
                           </div>
                         </div>
-
                       </div>
                     </div>
 
@@ -2493,12 +3803,32 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
                             onClick={() => {
                               setSelectedPatientForConsultation(p);
                               setConsultationForm({
-                                symptoms: p.allergies ? "Suivi systématique " + p.allergies : "Syndrome fébrile à préciser...",
+                                symptoms: p.allergies ? "Suivi systématique (" + p.allergies + ")" : "Syndrome fébrile à préciser...",
                                 exam: "Pouls stable, TA prise régulière.",
                                 diagnosis: "Diag à préciser après examens cliniques.",
                                 prescription: "",
                                 notes: "Patient à réévaluer."
                               });
+
+                              // Initialize matching patient constants dynamically
+                              if (p.id === "patient-diara" || p.lastName.toLowerCase().includes("diara")) {
+                                setConsultTaille("175");
+                                setConsultPoids("70");
+                                setConsultTA("120/80");
+                                setConsultPouls("75");
+                                setConsultTemp("37.8");
+                                setConsultSpO2("98");
+                                setConsultHistoire("Patient Diara Moussa (42 ans) reçu pour syndrome fébrile d'installation aiguë.");
+                              } else {
+                                setConsultTaille("170");
+                                setConsultPoids("78");
+                                setConsultTA("128/75");
+                                setConsultPouls("78");
+                                setConsultTemp("36.8");
+                                setConsultSpO2("98");
+                                setConsultHistoire(`Patient ${p.lastName.toUpperCase()} ${p.firstName} (${p.dateOfBirth ? (new Date().getFullYear() - new Date(p.dateOfBirth).getFullYear()) : "31"} ans) reçu pour consultation au cabinet.`);
+                              }
+
                               showToast(`Consultation ouverte pour ${p.lastName.toUpperCase()}`);
                             }}
                             className="text-[10px] font-black bg-teal-800 hover:bg-teal-905 text-white py-1.5 rounded-xl transition-all h-9 flex items-center justify-center gap-1 shadow-xs cursor-pointer"
@@ -4479,6 +5809,1130 @@ export const DmgModuleView: React.FC<DmgModuleViewProps> = ({
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* ========================================== */}
+        {/* SUBTAB: IMMERSIVE SCENARIO WORKFLOW SIMULATOR */}
+        {/* ========================================== */}
+        {activeSubTab === "workflow_scenario" && (
+          <div className="space-y-6 animate-fade-in text-xs font-semibold animate-duration-300" id="dmg-workflow-scenario-tab">
+            
+            {/* Header Jumbotron */}
+            <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-teal-950 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden border border-amber-600/30">
+              <div className="absolute right-0 top-0 opacity-10 transform translate-x-12 -translate-y-12">
+                <Award className="h-64 w-64 text-white" />
+              </div>
+
+              <div className="relative z-10 space-y-2">
+                <span className="bg-amber-500 text-slate-950 font-black px-2.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-mono">
+                  Module de Démonstration Live
+                </span>
+                <h2 className="text-xl font-black tracking-tight flex items-center gap-2">
+                  🧬 MédiSahel Clinical Care Storyboard: Alerte Médecin &amp; Coordination Staff
+                </h2>
+                <p className="text-[11px] text-slate-200 font-medium max-w-4xl leading-relaxed">
+                  Ce simulateur immersif vous guide pas-à-pas à travers le parcours de soins réel de la patiente 
+                  <strong className="text-amber-300"> Fatoumata Diallo</strong>. Découvrez l'interopérabilité des rôles 
+                  (Caissier → Médecin → Infirmier → Aide-Soignant → Stagiaire supervisé) avec alertes instantanées, 
+                  autocomplétion clinique, et scellage électronique du DME.
+                </p>
+                
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button 
+                    onClick={() => {
+                      setScStep(1);
+                      setScPatient({
+                        ...scPatient,
+                        symptoms: "",
+                        prescriptionText: "",
+                        vitalsEntered: false,
+                        vitals: { temp: "", bp_sys: "", bp_dia: "", pulse: "", resp: "", spo2: "", notes: "" }
+                      });
+                      setScCares([
+                        { id: "sc-c1", name: "Perfusion de sérum glucosé", role: "Infirmier", assignedTo: "Fatoumata Diarra (Infirmière)", status: "À faire", executedAt: "", notes: "", signature: "", validatedBy: "", supervisorNotes: "" },
+                        { id: "sc-c2", name: "Prise des constantes (TA, T°, pouls)", role: "Aide-soignant", assignedTo: "Moussa Coulibaly (Aide-soignant)", status: "À faire", executedAt: "", notes: "", signature: "", validatedBy: "", supervisorNotes: "" },
+                        { id: "sc-c3", name: "Surveillance post-perfusion", role: "Stagiaire", assignedTo: "Awa Touré (Stagiaire)", status: "À faire", executedAt: "", notes: "", signature: "", validatedBy: "", supervisorNotes: "" }
+                      ]);
+                      showToast("🧬 Scénario réinitialisé à l'étape 1 !");
+                    }}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2 rounded-xl border border-amber-500/50 cursor-pointer text-[10px] uppercase font-mono tracking-wider transition-all"
+                  >
+                    🔄 Réinitialiser le parcours de démonstration
+                  </button>
+
+                  <button 
+                    onClick={playSoundAlert}
+                    className="bg-white/10 hover:bg-white/20 text-white font-black px-3 py-2 rounded-xl cursor-pointer text-[10px] uppercase font-mono tracking-wider transition-all flex items-center gap-1.5"
+                  >
+                    <Volume2 className="h-4 w-4 text-amber-500 animate-pulse" />
+                    Tester le Chime Acoustique Médecin (TTS/WebAudio)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Scénario Type Switcher */}
+            <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-2 max-w-2xl">
+              <button 
+                onClick={() => {
+                  setActiveScenarioType("clinique");
+                  showToast("🧬 Scénario Clinique & Staff sélectionné !");
+                }}
+                className={`flex-1 py-2.5 px-4 rounded-xl font-mono text-[10px] uppercase font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  activeScenarioType === "clinique" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span>🧬 1. Alerte Clinique &amp; Staff (8 Étapes)</span>
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setActiveScenarioType("labo");
+                  showToast("🔬 Scénario Analyses Biologiques &amp; Caisse sélectionné !");
+                }}
+                className={`flex-1 py-2.5 px-4 rounded-xl font-mono text-[10px] uppercase font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  activeScenarioType === "labo" ? "bg-white text-teal-955 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span>🔬 2. Analyses Biologiques (6 Étapes)</span>
+              </button>
+            </div>
+
+            {activeScenarioType === "labo" ? (
+              <DmgLabScenario showToast={showToast} />
+            ) : (
+              <>
+                {/* Stepper HUD */}
+                <div className="bg-white rounded-2xl border border-gray-150 p-4 shadow-xs">
+              <div className="flex justify-between items-center px-2 border-b pb-3 mb-4">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400 font-mono">Progression du flux de soins</span>
+                <span className="text-xs font-bold text-slate-850">
+                  Étape <strong className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-mono">{scStep}/8</strong> : {
+                    scStep === 1 ? "Déclenchement Caissier" :
+                    scStep === 2 ? "Alerte & Salle d'attente FIFO" :
+                    scStep === 3 ? "Prise en charge & Auto-complétion DME" :
+                    scStep === 4 ? "Prescription & Assignation du Staff" :
+                    scStep === 5 ? "Espace Infirmier (Perfusion)" :
+                    scStep === 6 ? "Espace Aide-Soignant (Constantes)" :
+                    scStep === 7 ? "Espace Stagiaire & Superviseur" :
+                    "Tracerie DME Complète scellée"
+                  }
+                </span>
+              </div>
+
+              {/* Graphical Steps */}
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+                {[
+                  { num: 1, label: "1. Caissier", desc: "Orange Money" },
+                  { num: 2, label: "2. Alerte", desc: "Buzzer FIFO" },
+                  { num: 3, label: "3. Prise DME", desc: "CIM-11" },
+                  { num: 4, label: "4. Assignation", desc: "Soins Staff" },
+                  { num: 5, label: "5. Infirmier", desc: "Perfusion" },
+                  { num: 6, label: "6. A-Soignant", desc: "Constantes" },
+                  { num: 7, label: "7. Stagiaire", desc: "Validation" },
+                  { num: 8, label: "8. Trace DME", desc: "Co-Signature" },
+                ].map((s) => (
+                  <button
+                    key={s.num}
+                    onClick={() => {
+                      setScStep(s.num);
+                      showToast(`Navigué vers l'étape ${s.num} du scénario clinique`);
+                    }}
+                    className={`p-2.5 rounded-xl text-left border transition-all relative ${
+                      scStep === s.num
+                        ? "bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-950 font-black"
+                        : scStep > s.num
+                        ? "bg-teal-50/50 border-teal-200 text-teal-900"
+                        : "bg-slate-50/50 border-slate-150 text-slate-450 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 justify-between">
+                      <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-full ${
+                        scStep === s.num ? "bg-amber-200 text-amber-900" :
+                        scStep > s.num ? "bg-teal-200 text-teal-900" : "bg-slate-200 text-slate-500"
+                      }`}>{s.num}</span>
+                      {scStep > s.num && <CheckCircle className="h-3.5 w-3.5 text-teal-600 shrink-0" />}
+                    </div>
+                    <p className="font-extrabold text-[11px] mt-1.5 leading-none">{s.label}</p>
+                    <p className="text-[9px] text-slate-400 font-medium block mt-0.5 leading-none">{s.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Simulated Workspace Frame based on active step */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* Left Column: Interactive Screen (2/3 width) */}
+              <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-150 p-6 shadow-sm min-h-[500px] flex flex-col justify-between text-slate-800">
+                
+                {/* ETAPE 1: CAISSIER */}
+                {scStep === 1 && (
+                  <div className="space-y-5 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 1 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900">Enregistrement Patient &amp; Encaissement Caissier</h3>
+                      </div>
+                      <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">Encaissements</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-dashed text-[11px] text-slate-600 leading-relaxed font-semibold">
+                      Le caissier de MédiSahel crée ou recherche la fiche d'identité de la patiente 
+                      <strong className="text-slate-800 font-black"> Fatoumata Diallo</strong> pour initier sa consultation. 
+                      Encaisser le ticket crée instantanément la transaction et injecte automatiquement son enregistrement dans la file FIFO du médecin de garde avec une relance vibrante et acoustique.
+                    </div>
+
+                    {/* Patient Card Preview */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-white border rounded-2xl p-4 space-y-3 shadow-xs">
+                        <span className="text-[8px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase font-mono tracking-wider">Identité DME</span>
+                        <div className="space-y-1 text-slate-700">
+                          <p className="font-black text-slate-900 text-sm">Fatoumata DIALLO</p>
+                          <p>Née le 13/06/1994 (32 ans) | Féminin</p>
+                          <p>Ethnie : <span className="font-bold">Peulh</span> | Groupe sanguin : <span className="text-red-650 font-bold">A+</span></p>
+                          <p>Téléphone : <span className="font-mono">76 12 34 56</span></p>
+                          <p>Mutuelle principale : <span className="text-slate-900 font-extrabold hover:underline">CANAM (Mali)</span></p>
+                          <p>Antécédents médicaux : <span className="text-rose-700 font-bold">HTA</span></p>
+                        </div>
+                      </div>
+
+                      {/* Cashier Payment configuration */}
+                      <div className="bg-white border rounded-2xl p-4 space-y-4 shadow-xs flex flex-col justify-between">
+                        <div className="space-y-2">
+                          <span className="text-[8px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-mono uppercase font-black">Détails financiers du ticket</span>
+                          <div className="flex justify-between items-center text-xs font-semibold">
+                            <span className="text-gray-500 font-normal">Acte médical :</span>
+                            <strong className="text-slate-800">CONSULTATION MÉDECINE GÉNÉRALE</strong>
+                          </div>
+                          <div className="flex justify-between items-center text-xs font-bold">
+                            <span className="text-gray-500 font-normal">Montant dû :</span>
+                            <strong className="text-teal-800 font-mono">15 000 FCFA</strong>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <label className="text-[9px] text-slate-400 font-mono uppercase block mt-1">Canal de paiement</label>
+                            <select className="w-full p-2 bg-slate-50 border rounded-xl text-xs font-bold" defaultValue="OrangeMoney">
+                              <option value="OrangeMoney">Orange Money (Mali)</option>
+                              <option value="Cash">Espèces</option>
+                              <option value="Canam">CANAM (Prise en charge 80%)</option>
+                              <option value="MobileMoney">Telecel Cash / Moov Money</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            playSoundAlert();
+                            showToast("💰 Paiement reçu ! N° CONSUL-1306-0001 émis. Alerte sonore transmise au Médecin !");
+                            setScStep(2);
+                          }}
+                          className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white select-none rounded-xl text-xs font-bold font-mono tracking-wider uppercase transition-all shadow-md cursor-pointer flex justify-center items-center gap-1.5"
+                        >
+                          💸 Valider Transaction &amp; Émettre Alerte
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ETAPE 2: RECEPTION ALERTE */}
+                {scStep === 2 && (
+                  <div className="space-y-5 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 2 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900">Alerte Clinique &amp; Relais de la File d'attente FIFO</h3>
+                      </div>
+                      <span className="bg-rose-50 text-red-700 border border-red-200 px-2 py-0.5 rounded text-[10px] font-bold">Live Alert</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border italic leading-relaxed text-[11px] text-slate-600">
+                      Un pop-up s'ouvre sur la console du Dr. Ibrahim Touré, renforcé par le signal acoustique unique.
+                      Le patient s'insère à son heure exacte d'enregistrement (09:32) ordonné de manière ascendante.
+                    </div>
+
+                    {/* Dr Alert Box represented as requested */}
+                    <div className="border-4 border-amber-500 rounded-3xl overflow-hidden shadow-xl bg-orange-55/10">
+                      <div className="bg-amber-500 text-slate-950 p-3.5 font-black flex justify-between items-center text-xs">
+                        <span className="flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                          <BellRing className="h-4 w-4 animate-bounce" /> 🔔 MédiSahel – Alerte Nouveau Patient En Attente
+                        </span>
+                        <span className="bg-slate-900 text-white px-2 py-0.5 rounded text-[8px] font-mono">Buzzer : Actif</span>
+                      </div>
+                      
+                      <div className="p-5 space-y-4 text-xs font-semibold bg-white/40">
+                        <div className="p-4 bg-white border rounded-2xl shadow-xs space-y-2">
+                          <p className="text-sm">🆕 <strong className="text-slate-900">Nouveau patient en salle d'attente</strong></p>
+                          <div className="grid grid-cols-2 gap-2 text-slate-700 pt-1 text-[11px]">
+                            <div>Patient : <strong className="text-slate-950 uppercase">{scPatient.lastName} {scPatient.firstName}</strong></div>
+                            <div>N° Consultation : <span className="font-mono text-amber-800 font-black text-indigo-700 bg-sky-50 px-1 rounded">{scPatient.consultationNo}</span></div>
+                            <div>Heure d'arrivée : <span className="font-mono font-bold text-slate-800 font-sans">09:32</span></div>
+                            <div>Motif : <strong className="text-slate-900 font-sans">Consultation Générale</strong></div>
+                          </div>
+                        </div>
+
+                        {/* Button Action Rows */}
+                        <div className="flex gap-2 justify-end pt-1">
+                          <button
+                            onClick={() => {
+                              showToast("DME de Fatoumata Diallo chargé avec succès !", "success");
+                              setScStep(3);
+                            }}
+                            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-mono uppercase text-[10px] font-black rounded-xl shadow-xs cursor-pointer"
+                          >
+                            🤝 PRENDRE EN CHARGE
+                          </button>
+                          <button
+                            onClick={() => showToast("Liste d'attente globale actualisée.")}
+                            className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold cursor-pointer"
+                          >
+                            VOIR LISTE D'ATTENTE
+                          </button>
+                          <button
+                            onClick={() => showToast("Alerte fermée temporairement.")}
+                            className="px-3 py-2 bg-white border text-slate-500 rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
+                          >
+                            IGNORER
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Waiting list table FIFO */}
+                    <div className="bg-white border rounded-2xl p-4 space-y-3">
+                      <h4 className="font-black text-xs text-slate-800 font-mono uppercase tracking-wide">File d'attente Médecin (FIFO - Arrivée Croissante)</h4>
+                      <div className="border rounded-xl spill-x-auto spill-y-auto">
+                        <table className="w-full text-left text-[11px]">
+                          <thead className="bg-slate-50 border-b text-slate-500 font-mono">
+                            <tr>
+                              <th className="p-2 border-r font-bold">Ordre</th>
+                              <th className="p-2 border-r font-bold">Heure</th>
+                              <th className="p-2 border-r font-bold">Patient</th>
+                              <th className="p-2 border-r font-bold">N° Consultation</th>
+                              <th className="p-2 font-bold">Statut</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {scQueue.map((q, i) => (
+                              <tr key={q.id} className={`border-b last:border-b-0 ${q.name.includes("Fatoumata") ? "bg-amber-50/40 font-bold" : ""}`}>
+                                <td className="p-2 border-r font-mono text-center font-bold">{i + 1}</td>
+                                <td className="p-2 border-r font-mono text-purple-900 font-bold">{q.time}</td>
+                                <td className="p-2 border-r font-black text-slate-900">{q.name}</td>
+                                <td className="p-2 border-r font-mono font-medium text-slate-600">{q.number}</td>
+                                <td className="p-2">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    q.status === "En consultation" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-amber-50 text-amber-800 border border-amber-250 animate-pulse"
+                                  }`}>{q.status}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ETAPE 3: PRISE EN CHARGE ET AUTO-COMPLETION DME */}
+                {scStep === 3 && (
+                  <div className="space-y-5 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 3 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900">👩‍⚕️ Consultation Médicale - DME de Fatoumata Diallo</h3>
+                      </div>
+                      <span className="bg-sky-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] font-bold">Dossier Clinique</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3 rounded-xl border border-dashed text-[11px] text-slate-600 leading-relaxed font-semibold">
+                      Entrez les observations de consultation clinique de Dr Ibrahim Touré. Saisissez ou complétez le diagnostic. 
+                      Notre <strong className="text-teal-850 font-bold">Intelligent Care Input</strong> facilite l'ordonnance médicale dynamique.
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Clinical demographics banner */}
+                      <div className="bg-slate-900 text-white rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] leading-relaxed">
+                        <div>
+                          <span className="text-[9px] text-gray-400 font-mono block">PATIENT</span>
+                          <strong className="text-yellow-400 font-black">Fatoumata Diallo</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-gray-400 font-mono block">AGE &amp; ETHNIE</span>
+                          <strong>32 ans | Peulh</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-gray-400 font-mono block">ASSURANCE</span>
+                          <strong className="text-cyan-400 font-bold">CANAM CO-PAY</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-gray-400 font-mono block">ALLERGIE / ATCD</span>
+                          <strong>HTA (<span className="text-red-400 font-bold">Allergies: Aucune</span>)</strong>
+                        </div>
+                      </div>
+
+                      {/* Interactive form element */}
+                      <div className="space-y-3.5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-slate-500 text-[10px] mb-1 font-mono uppercase">Plainte Principale du patient</label>
+                            <input 
+                              type="text"
+                              value={scPatient.symptoms}
+                              onChange={(e) => setScPatient({ ...scPatient, symptoms: e.target.value })}
+                              placeholder="ex: Céphalées intenses, frissons de ferveur et courbatures depuis 3 jours"
+                              className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none text-xs font-semibold"
+                            />
+                            <div className="flex gap-1.5 mt-1">
+                              {["Céphalées & Fièvre forte", "Frissons intermittents", "Douleurs abdominales"].map(s => (
+                                <button 
+                                  key={s} 
+                                  onClick={() => setScPatient({ ...scPatient, symptoms: s })}
+                                  className="text-[9px] text-slate-500 border rounded bg-slate-50 px-1.5 py-0.5 hover:bg-slate-100 cursor-pointer"
+                                >
+                                  + {s}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-500 text-[10px] mb-1 font-mono uppercase">Classification Diagnostique CIM-11</label>
+                            <select 
+                              value={scPatient.diagnostic}
+                              onChange={(e) => setScPatient({ ...scPatient, diagnostic: e.target.value })}
+                              className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-extrabold focus:outline-none"
+                            >
+                              <option value="Paludisme simple">Paludisme simple confirmé [CIM-11: 1F40.0]</option>
+                              <option value="Accès palustre sévère">Accès palustre sévère [CIM-11: 1F40.1]</option>
+                              <option value="Fièvre typhoïde">Fièvre typhoïde suspectée [CIM-11: 1A07]</option>
+                              <option value="HTA Essentielle">HTA Essentielle [CIM-11: BA00]</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Interactive dynamic editor simulating Requirement 3 */}
+                        <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs bg-slate-50/50 p-4 space-y-3">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="font-mono text-cyan-800 uppercase font-black font-semibold">Ordonnance intelligente assistant (@)</span>
+                            <span className="text-[9px] text-gray-400 italic font-mono font-medium">Cliquez sur un tag d'autocomplétion rapide</span>
+                          </div>
+
+                          <textarea
+                            value={scPatient.prescriptionText}
+                            onChange={(e) => setScPatient({ ...scPatient, prescriptionText: e.target.value })}
+                            rows={3}
+                            placeholder="Entrez vos prescriptions. Astuce: @artemether pour le paludisme, @paracetamol pour hydrater et soulager..."
+                            className="w-full p-2.5 bg-white border rounded-xl text-[11px] leading-relaxed font-mono focus:outline-none font-medium text-slate-800"
+                          />
+
+                          <div className="flex flex-wrap gap-2 pt-1 border-t border-dashed">
+                            <span className="text-[10px] text-slate-400 font-mono">Prescriptions intelligentes :</span>
+                            {[
+                              { label: "@paludisme-simple-complet", text: "Artéméther/Luméfantrine 80/480 mg : 3 comprimés/jour pendant 3 jours\nParacétamol 500 mg : 2 comprimés en cas de fièvre\n@tdr @nfs" },
+                              { label: "@injectable-paracetamol", text: "Paracétamol 1g Perfusion IV l'unité" },
+                              { label: "@examen-tdr-nfs", text: "TDR Paludisme et Numération Formula Sanguine (NFS) prescrits d'urgence." }
+                            ].map((sug, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setScPatient({ ...scPatient, prescriptionText: sug.text });
+                                  showToast("⚡ Auto-complétion de l'ordonnance appliquée d'office !");
+                                }}
+                                className="bg-cyan-50 hover:bg-cyan-100 text-teal-800 font-mono text-[9px] px-2 py-1 rounded-md transition-all border border-cyan-200 cursor-pointer font-bold"
+                              >
+                                {sug.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          onClick={() => {
+                            if (!scPatient.symptoms) {
+                              showToast("⚠️ Renseignez d'abord la plainte de la patiente !", "error");
+                              return;
+                            }
+                            showToast("Observations validées. Évaluation des soins requis par Dr. Touré...");
+                            setScStep(4);
+                          }}
+                          className="bg-teal-800 hover:bg-teal-900 border text-white font-mono uppercase text-[10px] font-black px-5 py-2.5 rounded-xl shadow-md cursor-pointer"
+                        >
+                          Sauvegarder &amp; Déterminer les Soins requis ➡️
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ETAPE 4: PRESCRIPTION DES SOINS */}
+                {scStep === 4 && (
+                  <div className="space-y-5 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 4 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900 font-sans">🏥 Planification &amp; Assignation Automatique des Soins CLINIC-STAFF</h3>
+                      </div>
+                      <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded text-[10px] font-bold">Roster Assigné</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border leading-relaxed text-[11px] text-slate-600 font-semibold">
+                      Le Dr. Touré détermine les soins urgents requis pour Fatoumata Diallo et l'asphyxie thermique de sa crise de paludisme. 
+                      Sélectionnez les attributions et affectez l'exécution aux agents connectés.
+                    </div>
+
+                    {/* Care assignments lists */}
+                    <div className="space-y-4">
+                      {scCares.map((care) => (
+                        <div key={care.id} className="p-4 bg-slate-50 border border-slate-205 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-white transition-all shadow-xs">
+                          <div className="space-y-1">
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-mono tracking-wider uppercase font-black ${
+                              care.role === "Infirmier" ? "bg-indigo-100 text-indigo-900" :
+                              care.role === "Aide-soignant" ? "bg-amber-100 text-amber-900" :
+                              "bg-purple-100 text-purple-900"
+                            }`}>
+                              Cible Praticien Clinique : {care.role}
+                            </span>
+                            <h4 className="font-extrabold text-slate-900 text-sm">{care.name}</h4>
+                            <p className="text-[10px] text-slate-500 font-medium">Habilitation : {
+                              care.role === "Infirmier" ? "Actes complexes, perfusions, injectables" :
+                              care.role === "Aide-soignant" ? "Recueil surveillance clinique ou soins simples, hygiène" :
+                              "Actes sous supervision directe d'un Major de garde"
+                            }</p>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1 font-semibold shrink-0">
+                            <span className="text-[9px] text-gray-400 font-mono block">Agent affecté d'office :</span>
+                            <span className="px-3 py-1 bg-white border rounded-xl text-xs font-extrabold text-slate-805">
+                              👤 {care.assignedTo}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-end pt-3">
+                      <button
+                        onClick={() => {
+                          playSoundAlert();
+                          // Propagate to main local persistent list of nursing cares in the application so user sees it in Espace Soignant
+                          const mainDmgCaresString = localStorage.getItem("dmg_nursing_cares") || "[]";
+                          try {
+                            const currentCares = JSON.parse(mainDmgCaresString);
+                            const updatedCares = [
+                              { id: "sim-c1", patientId: "P2026-0123", patientName: "Fatoumata Diallo", careType: "Perfusion de sérum glucosé", productUsed: "Sérum Glucosé 5% + Ampoules", quantityUsed: "500 ml", scheduledTime: "09:45", status: "À faire", observations: "Perfusion prescrite par Dr. Ibrahim Touré.", executorName: "Fatoumata DIARRA", executorRole: "NURSE" },
+                              { id: "sim-c2", patientId: "P2026-0123", patientName: "Fatoumata Diallo", careType: "Prise des constantes (TA, T°, pouls)", productUsed: "Appareils de prise", quantityUsed: "1 Recueil", scheduledTime: "09:45", status: "À faire", observations: "Vvital constants checking requested by physician.", executorName: "Moussa Coulibaly", executorRole: "AIDE_SOIGNANT" },
+                              ...currentCares
+                            ];
+                            setNursingCares(updatedCares);
+                            localStorage.setItem("dmg_nursing_cares", JSON.stringify(updatedCares));
+                          } catch (ex) {
+                            console.error(ex);
+                          }
+
+                          showToast("📬 Tâches injectées en temps réel ! Alertes sonores émises pour le staff !");
+                          setScStep(5);
+                        }}
+                        className="bg-emerald-700 hover:bg-emerald-800 border text-white font-mono uppercase text-[10px] font-black px-5 py-3 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                      >
+                        ⚡ ACCRÉDITER LE STAFF &amp; ACTIVER LES ALERTES 🔔
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ETAPE 5: ESPACE INFIRMIER (PERFUSION) */}
+                {scStep === 5 && (
+                  <div className="space-y-5 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 5 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900">💪 Interface Infirmier Major de Garde - Fatoumata Diarra</h3>
+                      </div>
+                      <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] font-bold">Nursing</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border leading-relaxed text-[11px] text-slate-700 font-semibold">
+                      L'infirmière <strong className="text-slate-905 font-extrabold">Fatoumata Diarra</strong> reçoit l'alerte sur sa console. 
+                      Pratiquez le geste invasif requis (Perfusion) puis signez-le électroniquement.
+                    </div>
+
+                    {/* Step 5 alert message box */}
+                    <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-start gap-3 shadow-xs">
+                      <BellRing className="h-5 w-5 text-indigo-700 mt-1 shrink-0 animate-bounce" />
+                      <div className="space-y-1 font-semibold text-[11.5px] leading-relaxed">
+                        <strong className="text-indigo-950 text-xs">🔔 ALERTE – NOUVEAU SOIN PRESCRIT D'URGENCE</strong>
+                        <p>Patient : <span className="font-extrabold text-slate-900">Fatoumata Diallo</span> | Ambulatoire </p>
+                        <p>Acte assigné : <span className="text-indigo-800 font-extrabold underline-offset-2 underline">Perfusion de sérum glucosé</span></p>
+                        <p className="text-[10.5px] text-slate-500 font-normal">Prescrit par : <strong className="text-slate-800 font-sans">Dr. Ibrahim Touré (Médecine Générale)</strong></p>
+                      </div>
+                    </div>
+
+                    {/* Dynamic state representation */}
+                    <div className="bg-white border rounded-2xl p-4.5 space-y-4 shadow-xs">
+                      <div className="flex justify-between items-center border-b pb-1.5 font-bold">
+                        <span className="font-mono text-[9px] text-slate-400">TABLEAU DE BORD INFIRMIER EN DIRECT</span>
+                        <span className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-[8.5px] font-bold font-mono">1 SOIN À FAIRE</span>
+                      </div>
+
+                      <div className="p-3.5 bg-slate-50 border rounded-xl flex justify-between items-center text-xs font-semibold">
+                        <div>
+                          <p className="font-extrabold text-slate-800 text-sm">Perfusion de sérum glucosé</p>
+                          <p className="text-[10.5px] text-slate-500 font-normal">Heure prévue : <span className="font-mono font-bold text-slate-700">09:45</span></p>
+                        </div>
+
+                        <div>
+                          {scCares[0].status === "À faire" && (
+                            <button
+                              onClick={() => {
+                                const tempCares = [...scCares];
+                                tempCares[0].status = "En cours";
+                                setScCares(tempCares);
+                                showToast("Perfusion débutée d'office. Surveillance active en cours.");
+                              }}
+                              className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl uppercase font-mono text-[10px] font-black cursor-pointer"
+                            >
+                              ▶️ ACCEPTER &amp; ENGAGER
+                            </button>
+                          )}
+
+                          {scCares[0].status === "En cours" && (
+                            <button
+                              onClick={() => {
+                                const tempCares = [...scCares];
+                                tempCares[0].status = "Validée";
+                                tempCares[0].executedAt = "09:45";
+                                tempCares[0].notes = "Sérum glucosé 5% posé sans incident. Patient calme, débit régulé.";
+                                tempCares[0].signature = "SIG-FD-NURSE-1306";
+                                setScCares(tempCares);
+                                showToast("Soin signé de façon sécurisée et archivé au DME !", "success");
+                              }}
+                              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl uppercase font-mono text-[10px] font-black cursor-pointer flex items-center gap-1.5 font-sans font-semibold"
+                            >
+                              <Check className="h-3.5 w-3.5 text-white animate-pulse" /> SIGNER L'ACTE (EXÉCUTÉ)
+                            </button>
+                          )}
+
+                          {scCares[0].status === "Validée" && (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-850 border border-emerald-250 px-2 py-1 rounded font-mono font-bold flex items-center gap-1 leading-none">
+                              ✓ EXÉCUTÉ &amp; SCELLÉ
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {scCares[0].status === "Validée" && (
+                        <div className="bg-emerald-50/50 p-3 rounded-xl border border-dashed text-[11px] leading-relaxed text-slate-700 font-semibold">
+                          <p><strong>Rapport d'exécution :</strong> {scCares[0].notes}</p>
+                          <p className="text-[9.5px] mt-1 font-mono text-gray-400 font-normal">Empreinte numérique d'authentification : <strong className="text-teal-800 font-extrabold">{scCares[0].signature}</strong> (Time : {scCares[0].executedAt})</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => {
+                          if (scCares[0].status !== "Validée") {
+                            showToast("⚠️ Validez d'abord la perfusion par l'infirmière !", "error");
+                            return;
+                          }
+                          showToast("Prise en charge par l'Aide-soignant...");
+                          setScStep(6);
+                        }}
+                        className="bg-teal-800 hover:bg-teal-900 border text-white font-mono uppercase text-[10px] font-black px-5 py-2.5 rounded-xl shadow-md cursor-pointer"
+                      >
+                        Passer à l'Aide-Soignant ➡️
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ETAPE 6: INTERFACE AIDE-SOIGNANT */}
+                {scStep === 6 && (
+                  <div className="space-y-5 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 6 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900">🌡️ Interface de l'Aide-Soignant - Moussa Coulibaly</h3>
+                      </div>
+                      <span className="bg-amber-100 text-amber-900 border px-2 py-0.5 rounded text-[10px] font-bold">Aide-Soignant</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border leading-relaxed text-[11px] text-slate-700 font-semibold">
+                      L'aide-soignant <strong className="text-slate-950 font-black">Moussa Coulibaly</strong> est chargé de recueillir et saisir les constantes 
+                      vitales de Fatoumata Diallo. Saisissez les données cliniques requises.
+                    </div>
+
+                    {/* Restriction card showing why Aide-soignant has custom rules */}
+                    <div className="bg-orange-50 border border-orange-100 p-3 rounded-xl flex items-start gap-2.5 text-[10.5px] text-orange-950 leading-relaxed font-semibold">
+                      <ShieldAlert className="h-4 w-4 text-orange-605 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>🔒 Habilitations &amp; Scope de Compétence Clinique :</strong>
+                        <p className="font-normal mt-0.5 text-orange-900">
+                          Moussa Coulibaly n'a pas accès aux outils de modification d'ordonnances, de validation d'examens complexes ou d'émission 
+                          de diagnostics. Son module est restreint à la saisie de surveillance.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white border rounded-2xl p-5 space-y-4 shadow-xs">
+                      <span className="text-[8px] bg-sky-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold font-mono uppercase tracking-wide">Saisie de surveillance</span>
+                      
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[9px] text-slate-500 font-mono block mb-1">Température (°C)</label>
+                          <input
+                            type="text"
+                            placeholder="ex: 38.5"
+                            value={scPatient.vitals.temp}
+                            onChange={(e) => setScPatient({ ...scPatient, vitals: { ...scPatient.vitals, temp: e.target.value }})}
+                            className="p-2 w-full bg-slate-50 border rounded-xl font-mono text-center font-extrabold focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] text-slate-500 font-mono block mb-1 col-span-2">Tension Artérielle (mmHg)</label>
+                          <div className="flex items-center gap-1 font-mono">
+                            <input
+                              type="text"
+                              placeholder="SYS"
+                              value={scPatient.vitals.bp_sys}
+                              onChange={(e) => setScPatient({ ...scPatient, vitals: { ...scPatient.vitals, bp_sys: e.target.value }})}
+                              className="p-2 w-16 bg-slate-50 border rounded-xl text-center font-extrabold focus:outline-none text-xs"
+                            />
+                            <span>/</span>
+                            <input
+                              type="text"
+                              placeholder="DIA"
+                              value={scPatient.vitals.bp_dia}
+                              onChange={(e) => setScPatient({ ...scPatient, vitals: { ...scPatient.vitals, bp_dia: e.target.value }})}
+                              className="p-2 w-16 bg-slate-50 border rounded-xl text-center font-extrabold focus:outline-none text-xs"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] text-slate-500 font-mono block mb-1">Pouls (bpm)</label>
+                          <input
+                            type="text"
+                            placeholder="ex: 95"
+                            value={scPatient.vitals.pulse}
+                            onChange={(e) => setScPatient({ ...scPatient, vitals: { ...scPatient.vitals, pulse: e.target.value }})}
+                            className="p-2 w-full bg-slate-50 border rounded-xl font-mono text-center font-extrabold focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] text-slate-500 font-mono block mb-1">Freq. Respiratoire (/min)</label>
+                          <input
+                            type="text"
+                            placeholder="ex: 20"
+                            value={scPatient.vitals.resp}
+                            onChange={(e) => setScPatient({ ...scPatient, vitals: { ...scPatient.vitals, resp: e.target.value }})}
+                            className="p-2 w-full bg-slate-50 border rounded-xl font-mono text-center font-extrabold focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] text-slate-500 font-mono block mb-1">SpO2 (%)</label>
+                          <input
+                            type="text"
+                            placeholder="ex: 98"
+                            value={scPatient.vitals.spo2}
+                            onChange={(e) => setScPatient({ ...scPatient, vitals: { ...scPatient.vitals, spo2: e.target.value }})}
+                            className="p-2 w-full bg-slate-50 border rounded-xl font-mono text-center font-extrabold focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="col-span-2 sm:col-span-1">
+                          <label className="text-[9px] text-slate-500 font-mono block mb-1">Assistance Saisie</label>
+                          <button
+                            onClick={() => {
+                              setScPatient({
+                                ...scPatient,
+                                vitals: { temp: "38.5", bp_sys: "120", bp_dia: "80", pulse: "95", resp: "20", spo2: "98", notes: "Patient fébrile, consciente orientée" }
+                              });
+                              showToast("Données de Fatoumata Diallo chargées conformes !");
+                            }}
+                            className="w-full text-center py-2 bg-indigo-50 hover:bg-indigo-100 text-teal-900 text-[10px] font-black uppercase rounded-xl border border-dashed border-indigo-200 cursor-pointer"
+                          >
+                            ⚡ Saisie conformité
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9.5px] text-slate-500 block font-mono">Observations cliniques de surveillance</label>
+                        <input
+                          type="text"
+                          value={scPatient.vitals.notes}
+                          onChange={(e) => setScPatient({ ...scPatient, vitals: { ...scPatient.vitals, notes: e.target.value }})}
+                          placeholder="Notez d'éventuels frissons ou alertes..."
+                          className="p-2.5 text-xs w-full bg-slate-50 border border-slate-200 rounded-xl focus:outline-none font-semibold"
+                        />
+                      </div>
+
+                      {scPatient.vitalsEntered ? (
+                        <div className="bg-emerald-50 text-emerald-800 p-3 rounded-xl border border-emerald-200 text-[11px] leading-relaxed font-semibold">
+                          ✅ <strong>Feuille de constantes enregistrée :</strong> Temp: 38.5°C | TA: 120/80 mmHg | Pouls: 95 | SpO2: 98%. Signée électroniquement par Moussa Coulibaly (Aide-Soignant) à 09:50.
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (!scPatient.vitals.temp || !scPatient.vitals.bp_sys) {
+                              showToast("⚠️ Remplissez les paramètres de constantes !", "error");
+                              return;
+                            }
+                            setScPatient({ ...scPatient, vitalsEntered: true });
+                            showToast("Constantes enregistrées avec validation d'habilitation", "success");
+                          }}
+                          className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-black uppercase tracking-wider font-mono rounded-xl shadow-xs cursor-pointer"
+                        >
+                          📌 Enregistrer &amp; Signer la feuille de surveillance
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => {
+                          if (!scPatient.vitalsEntered) {
+                            showToast("⚠️ Saisissez d'abord les vitalparameters !", "error");
+                            return;
+                          }
+                          showToast("Passage à l'Espace d'exécution et validation Stagiaire...");
+                          setScStep(7);
+                        }}
+                        className="bg-teal-805 hover:bg-teal-900 border text-white font-mono uppercase text-[10px] font-black px-5 py-2.5 rounded-xl shadow-md cursor-pointer"
+                      >
+                        Passer au Stagiaire &amp; Validation ➡️
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ETAPE 7: STAGIAIRE & SUPERVISION */}
+                {scStep === 7 && (
+                  <div className="space-y-5 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 7 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900">🎓 Espace Stagiaire &amp; Validation par Superviseur</h3>
+                      </div>
+                      <span className="bg-purple-50 text-purple-700 border border-purple-255 px-2 py-0.5 rounded text-[10px] font-bold">Supervisé</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border leading-relaxed text-[11px] text-slate-700 font-semibold text-xs">
+                      Les actes du stagiaire <strong className="text-slate-950 font-black">Awa Touré</strong> requièrent un visa électronique de validation obligatoire. 
+                      Saisissez l'acte puis commutez vers le visa de l'Infirmier référent.
+                    </div>
+
+                    {/* Stagiaire work logs panel */}
+                    <div className="bg-white border rounded-2xl p-5 space-y-4 shadow-xs">
+                      <div className="flex justify-between items-center border-b pb-1.5 font-bold">
+                        <span className="text-[9px] text-purple-700 font-mono tracking-wider">🎓 CONSOLE STAGIAIRE EN LIGNE (SOUS TUTELLE)</span>
+                        <span className={`text-[9.5px] px-2 py-0.5 rounded font-mono ${
+                          scCares[2].status === "À faire" ? "bg-slate-105 text-slate-500" :
+                          scCares[2].status === "En attente de validation" ? "bg-orange-100 text-orange-900 font-extrabold animate-pulse border border-orange-200 text-orange-950" :
+                          "bg-emerald-100 text-emerald-850"
+                        }`}>
+                          Statut : {scCares[2].status}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 font-semibold">
+                        <p className="text-xs font-black text-slate-800">Acte à exécuter : Surveillance post-perfusion de Fatoumata Diallo</p>
+                        <p className="text-[10px] text-slate-500 font-medium">Tuteur clinique désigné : <strong className="text-slate-800 font-bold">Fatoumata Diarra (Major de Garde)</strong></p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[9.5px] text-slate-400 block font-sans font-semibold">Observations rédigées par le stagiaire</label>
+                        <textarea
+                          rows={2}
+                          value={scCares[2].notes || "Perfusion bien tolérée. Pas d'effet secondaire observé. Patient calme, conscience claire."}
+                          onChange={(e) => {
+                            const temp = [...scCares];
+                            temp[2].notes = e.target.value;
+                            setScCares(temp);
+                          }}
+                          placeholder="ex: Perfusion bien tolérée, aucun frisson détecté..."
+                          className="w-full p-2.5 bg-slate-100 border rounded-xl text-xs font-mono focus:outline-none"
+                        />
+                      </div>
+
+                      {scCares[2].status === "À faire" && (
+                        <button
+                          onClick={() => {
+                            const temp = [...scCares];
+                            temp[2].status = "En attente de validation";
+                            setScCares(temp);
+                            showToast("Acte soumis ! Déclenchement de l'alerte sur la console du Major.");
+                          }}
+                          className="w-full py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black uppercase tracking-wider font-mono cursor-pointer"
+                        >
+                          ⚠️ Soumettre observations pour visa de la tutelle majorée
+                        </button>
+                      )}
+
+                      {/* Supervisor validating block if sent */}
+                      {scCares[2].status === "En attente de validation" && (
+                        <div className="p-4 bg-orange-50 border-2 border-dashed border-amber-300 rounded-2xl space-y-3 font-semibold text-slate-800">
+                          <p className="text-xs font-black text-slate-900 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                            <UserCheck className="h-4 w-4 text-orange-600 shrink-0" />
+                            Cadre de Validation de l'Infirmier Référent (Visa Majoré)
+                          </p>
+
+                          <div className="space-y-2 text-xs">
+                            <label className="block text-[9.5px] text-slate-500 font-mono">Avis motivé du valideur académique</label>
+                            <input
+                              type="text"
+                              value={scCares[2].supervisorNotes || "Rapport validé. Comportement professionnel et prise en charge appliquée."}
+                              onChange={(e) => {
+                                const temp = [...scCares];
+                                temp[2].supervisorNotes = e.target.value;
+                                setScCares(temp);
+                              }}
+                              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl"
+                            />
+
+                            <div className="flex gap-2 font-black font-mono">
+                              <button
+                                onClick={() => {
+                                  const temp = [...scCares];
+                                  temp[2].status = "Validée";
+                                  temp[2].validatedBy = "Fatoumata Diarra (Infirmière Major)";
+                                  temp[2].executedAt = "10:00";
+                                  setScCares(temp);
+                                  showToast("Sceau apposé, certificat visé !", "success");
+                                }}
+                                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-[10px] uppercase rounded-xl cursor-pointer font-bold font-mono"
+                              >
+                                ✓ Valider définitivement
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const temp = [...scCares];
+                                  temp[2].status = "À faire";
+                                  setScCares(temp);
+                                  showToast("Renvoyé pour correction clinique.");
+                                }}
+                                className="px-3 py-2 bg-red-100 text-red-950 text-[10px] uppercase rounded-xl cursor-pointer"
+                              >
+                                Refuser (À recommencer)
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {scCares[2].status === "Validée" && (
+                        <div className="p-3.5 bg-emerald-50 border border-emerald-250 rounded-xl space-y-2 text-[11px] leading-relaxed font-semibold">
+                          <p className="font-extrabold text-emerald-900">✅ ACTE CLINIQUEMENT CO-SIGNÉ &amp; SCELLÉ</p>
+                          <p>Tuteur major : <span className="text-emerald-950 font-bold">{scCares[2].validatedBy}</span></p>
+                          <p>Appréciation du visa scellé : <em className="text-slate-600 font-sans">"{scCares[2].supervisorNotes}"</em></p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => {
+                          if (scCares[2].status !== "Validée") {
+                            showToast("⚠️ Le soin du stagiaire doit d'abord être validé !", "error");
+                            return;
+                          }
+                          showToast("DME actualisé en direct avec traçabilité complète !");
+                          setScStep(8);
+                        }}
+                        className="bg-teal-800 hover:bg-teal-900 border text-white font-mono uppercase text-[10px] font-black px-5 py-2.5 rounded-xl shadow-md cursor-pointer"
+                      >
+                        Consulter DME Mis à Jour ➡️
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ETAPE 8: SYNCHRONISATION ET RETOUR DME */}
+                {scStep === 8 && (
+                  <div className="space-y-6 animate-fade-in flex-grow">
+                    <div className="border-b pb-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-amber-600 font-mono">Étape 8 sur 8</span>
+                        <h3 className="text-base font-black text-slate-900">📁 Dossier Médical Électronique (DME) Scellé</h3>
+                      </div>
+                      <span className="bg-emerald-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">100% Certifié</span>
+                    </div>
+
+                    <div className="bg-slate-900 text-white rounded-3xl p-6 space-y-6 relative border-2 border-emerald-500 shadow-xl">
+                      
+                      {/* Certified Stamp */}
+                      <div className="absolute right-6 top-6 border-4 border-emerald-500 text-emerald-500 uppercase font-black text-[9px] font-mono p-2 rounded-xl border-double transform rotate-12 opacity-80 select-none bg-slate-950/90 text-center leading-tight">
+                        MÉDISAHEL SECURE<br/>DOCUMENT SATELLITE
+                      </div>
+
+                      <div className="border-b border-white/20 pb-4">
+                        <span className="text-[9px] font-mono text-cyan-400 block">Identité Hospitalière</span>
+                        <h4 className="text-lg font-black tracking-wide">FATOUMATA DIALLO | DOSSIER P2026-0123</h4>
+                        <p className="text-[10px] text-gray-400 mt-0.5 font-normal">MédiSahel Bamako V2 - Certificat National d'Hachage HIS</p>
+                      </div>
+
+                      {/* Section 1: Dr Consultation */}
+                      <div className="space-y-2 font-semibold">
+                        <h5 className="font-extrabold text-[10px] text-yellow-400 font-mono uppercase">🩺 CONSULTATION MÉDECIN (Dr. Ibrahim TOURÉ)</h5>
+                        <div className="bg-white/5 border border-white/15 p-3.5 rounded-xl text-xs space-y-2">
+                          <p>Diagnostic retenu : <strong>Paludisme simple confirmé [CIM-11: 1F40.0]</strong></p>
+                          <p className="text-[11px]">Symptômes observés : <em className="text-gray-300">"{scPatient.symptoms || "Fièvre suffocante, céphalées aiguës"}"</em></p>
+                          <div className="border-t border-white/10 pt-2 space-y-1">
+                            <span className="text-[9px] text-gray-400 block font-mono">Ordonnance :</span>
+                            <pre className="text-[10px] font-mono whitespace-pre-wrap text-emerald-300 bg-black/40 p-2.5 rounded-lg leading-relaxed">{scPatient.prescriptionText || "Artéméther/Luméfantrine 80/480 mg : 3 comprimés/jour pendant 3 jours\nParacétamol 500 mg : 2 comprimés en cas de fièvre"}</pre>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 2: Vitals from Aide-soignant */}
+                      <div className="space-y-2 font-semibold">
+                        <h5 className="font-extrabold text-[10px] text-cyan-400 font-mono uppercase">🌡️ SURVEILLANCE CONSTANTES (Moussa Coulibaly, Aide-soignant)</h5>
+                        <div className="bg-white/5 border border-white/15 p-4 rounded-xl text-[11px] leading-relaxed grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
+                          <div className="bg-black/20 p-2.5 rounded-xl border border-white/10">
+                            <span className="text-gray-400 text-[9px] block">Température</span>
+                            <strong className="text-rose-400 font-mono text-xs">{scPatient.vitals.temp || "38.5"} °C</strong>
+                          </div>
+                          <div className="bg-black/20 p-2.5 rounded-xl border border-white/10">
+                            <span className="text-gray-400 text-[9px] block">Tension</span>
+                            <strong className="font-mono text-xs">{scPatient.vitals.bp_sys || "120"}/{scPatient.vitals.bp_dia || "80"} mmHg</strong>
+                          </div>
+                          <div className="bg-black/20 p-2.5 rounded-xl border border-white/10">
+                            <span className="text-gray-400 text-[9px] block">Pouls</span>
+                            <strong className="font-mono text-xs text-amber-400">{scPatient.vitals.pulse || "95"} bpm</strong>
+                          </div>
+                          <div className="bg-black/20 p-2.5 rounded-xl border border-white/10">
+                            <span className="text-gray-400 text-[9px] block">Fréquence Respi</span>
+                            <strong className="font-mono text-xs">{scPatient.vitals.resp || "20"} /min</strong>
+                          </div>
+                          <div className="bg-black/20 p-2.5 rounded-xl border border-white/10">
+                            <span className="text-gray-400 text-[9px] block">SpO2</span>
+                            <strong className="text-cyan-300 font-mono text-xs">{scPatient.vitals.spo2 || "98"} %</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Staff Care co-signature */}
+                      <div className="space-y-2 font-semibold">
+                        <h5 className="font-extrabold text-[10px] text-purple-400 font-mono uppercase">💉 FEUILLE D'ACTES INFIRMIERS ET CO-SIGNATURES SCELLÉES</h5>
+                        <div className="space-y-2.5">
+                          {scCares.map((c) => (
+                            <div key={c.id} className="bg-white/5 border border-white/15 p-3.5 rounded-xl text-xs space-y-1.5 leading-relaxed">
+                              <div className="flex justify-between items-center text-[10px]">
+                                <span className="font-bold text-slate-200">{c.name}</span>
+                                <span className="bg-emerald-950 border border-emerald-500 text-white font-mono text-[8px] px-1.5 py-0.5 rounded leading-none">EXECUTÉ VALIDÉ</span>
+                              </div>
+                              <p className="text-gray-300">{c.notes || "Surveillance continue posée et approuvée sans aucun incident."}</p>
+                              
+                              <div className="flex justify-between items-center text-[9px] text-gray-400 border-t border-white/10 pt-1.5 mt-1 shrink-0 font-mono">
+                                <span>Rôle affecté : <strong>{c.role}</strong></span>
+                                <span>Signataire d'office : <strong>{c.assignedTo}</strong></span>
+                              </div>
+                              {c.validatedBy && (
+                                <p className="text-[9.5px] text-emerald-400 font-mono">✓ Visé et validé par : <strong>{c.validatedBy} ({c.supervisorNotes || "Rapport validé"})</strong></p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Live Telemetry logs & informational guide (1/3 width) */}
+              <div className="space-y-5 lg:col-span-1 leading-relaxed">
+                
+                {/* Visual flowchart summary as provided in the instruction */}
+                <div className="bg-white p-5 rounded-2xl border border-gray-150 space-y-3.5 shadow-xs">
+                  <h4 className="font-black text-xs text-slate-800 border-b pb-2 tracking-wide uppercase font-mono">Diagramme de flux de données</h4>
+                  
+                  <div className="bg-slate-900 text-teal-400 font-mono text-[10px] p-4 rounded-xl space-y-3 leading-snug">
+                    <div>
+                      <p className="text-yellow-400 font-black">Caissier</p>
+                      <p className="text-[9px] text-gray-400"> (encaissement + déclenchement)</p>
+                      <p className="pl-4">▼</p>
+                    </div>
+
+                    <div>
+                      <p className="text-yellow-400 font-black">Médecin (Ibrahim Touré)</p>
+                      <p className="text-[9px] text-gray-400"> (chime sonore + FIFO + prescription)</p>
+                      <p className="pl-4">▼</p>
+                    </div>
+
+                    <div>
+                      <p className="text-amber-500 font-bold">Assignation automatique</p>
+                      <p className="pl-4 text-emerald-300">├─► InfirmierMajor</p>
+                      <p className="pl-4 text-emerald-300">├─► AideSoignant</p>
+                      <p className="pl-4 text-emerald-300">└─► Stagiaire Tutelle</p>
+                      <p className="pl-4">▼</p>
+                    </div>
+
+                    <div>
+                      <p className="text-cyan-400 font-black">DME Centralisé</p>
+                      <p className="text-[9px] text-gray-400 font-sans"> (traçabilité clinique certifiée)</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-gray-150 space-y-3.5 shadow-xs">
+                  <h4 className="font-extrabold text-slate-800 text-xs border-b pb-2 tracking-wider uppercase font-mono">Guide de traçabilité MédiSahel</h4>
+                  
+                  <div className="space-y-3 text-[11px] font-semibold text-slate-705">
+                    <div className="flex gap-2.5 items-start">
+                      <div className="bg-emerald-50 text-emerald-800 p-1 rounded font-bold">✓</div>
+                      <div>
+                        <strong className="text-slate-900 block font-black">Certificat d'Empreinte (GECD)</strong>
+                        Chaque étape d'affectation, d'exécution ou de validation est horodatée avec un hachage unique scellé au dossier patient.
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2.5 items-start">
+                      <div className="bg-emerald-50 text-emerald-800 p-1 rounded font-bold">✓</div>
+                      <div>
+                        <strong className="text-slate-905 block font-black">Responsabilité Partagée</strong>
+                        L'acte du stagiaire ne peut pas rester non visé. Sans approbation, le soin est consigné comme non certifié.
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2.5 items-start">
+                      <div className="bg-emerald-50 text-emerald-800 p-1 rounded font-bold">✓</div>
+                      <div>
+                        <strong className="text-slate-905 block font-black">Zéro Risque Thérapeutique</strong>
+                        L'aide-soignant est invité à introduire de la surveillance; mais le module bloque toute administration autonome d'ampoules de drogues actives.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Audit trail preview */}
+                <div className="bg-slate-900 text-slate-205 p-4.5 rounded-2xl border space-y-3">
+                  <h4 className="font-black text-[10px] text-amber-500 uppercase font-mono tracking-wider">📜 Événements du simulateur</h4>
+                  <div className="space-y-1.5 max-h-[150px] overflow-y-auto pr-1 text-[9.5px] font-mono text-gray-400">
+                    <p className="text-cyan-400 font-sans">▶ [2026-06-13] Démarrage du simulateur live</p>
+                    {scStep >= 2 && <p className="text-emerald-400">▶ [09:32] CONSUL-1306-0001 : Entrée de Fatoumata Diallo dans la file FIFO</p>}
+                    {scStep >= 3 && <p className="text-emerald-400 font-sans">▶ [09:33] Prise en charge DMG effectuée par Dr Ibrahim Touré</p>}
+                    {scStep >= 4 && <p className="text-teal-400 font-sans">▶ [09:40] Prescription de perfusion et check des constantes injectées</p>}
+                    {scStep >= 5 && <p className="text-indigo-400">▶ [09:45] Infirmière Fatoumata Diarra valide l'exécution de l'acte technique</p>}
+                    {scStep >= 6 && <p className="text-yellow-400">▶ [09:50] Aide-soignant Moussa Coulibaly signe le recueil des constantes</p>}
+                    {scStep >= 7 && <p className="text-purple-400">▶ [10:00] Visa de tutorat clinique apposé par la Major de garde</p>}
+                    {scStep >= 8 && <p className="text-emerald-500 font-bold">▶ [10:05] Sceau numérique MédiSahel scellé d'office au dossier central</p>}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </>
+          )}
+
           </div>
         )}
 

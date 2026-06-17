@@ -1,4 +1,4 @@
-export type Role = "ADMIN" | "DOCTOR" | "NURSE" | "CASHIER" | "PHARMACIST" | "LAB_TECH" | "HR" | "MEDECIN_GENERAL_CHIEF" | "STAGIAIRE" | "AIDE_SOIGNANT" | "CAISSIER_PHARMACIEN" | "GESTIONNAIRE_STOCK";
+export type Role = "ADMIN" | "DOCTOR" | "NURSE" | "CASHIER" | "PHARMACIST" | "LAB_TECH" | "HR" | "MEDECIN_GENERAL_CHIEF" | "STAGIAIRE" | "AIDE_SOIGNANT" | "CAISSIER_PHARMACIEN" | "GESTIONNAIRE_STOCK" | "PROMOTEUR" | "DG";
 
 export type HospitalizationStatus = "ADMITTED" | "DISCHARGED";
 
@@ -92,6 +92,15 @@ export interface Patient {
   address?: string | null;
   ethnie: string;
   nationalite: string;
+  maritalStatus?: string | null;
+  profession?: string | null;
+  language?: string | null;
+  commune?: string | null;
+  quartier?: string | null;
+  emergencyContact?: string | null;
+  nina?: string | null;
+  amo?: string | null;
+  inps?: string | null;
   status: string;
   createdAt?: string;
   updatedAt?: string;
@@ -194,6 +203,9 @@ export interface Payroll {
   netSalary: number;
   status: PayrollStatus;
   payDate?: string | null;
+  paymentMethod?: string | null;
+  bankName?: string | null;
+  ribIban?: string | null;
 }
 
 export interface Appointment {

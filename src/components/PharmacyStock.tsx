@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { exportToExcel, exportToPDF } from "../utils/exportUtils";
 import { 
   Pill, Plus, Search, Check, ShieldAlert, ArrowUpRight, ShieldCheck, 
   AlertTriangle, FileText, ShoppingCart, RefreshCw, BarChart3, Truck, 
@@ -10,13 +11,28 @@ import {
 interface PharmacyStockProps {
   token: string | null;
   userRole: string; // PHARMACIST, ADMIN, GESTIONNAIRE_STOCK, CAISSIER_PHARMACIEN, etc.
+  moduleMode?: "sales" | "stock";
+  currentUser?: any;
 }
 
-export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole }) => {
+export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole, moduleMode, currentUser }) => {
+  const isStockManager = userRole === "ADMIN" || 
+    userRole === "PHARMACIST" || 
+    userRole === "GESTIONNAIRE_STOCK" || 
+    (currentUser?.allowedModules && currentUser.allowedModules.includes("pharmacy_stock"));
+
+  const isSalesManager = userRole === "ADMIN" || 
+    userRole === "PHARMACIST" || 
+    userRole === "CAISSIER_PHARMACIEN" || 
+    userRole === "CASHIER" || 
+    (currentUser?.allowedModules && currentUser.allowedModules.includes("pharmacy_sales"));
+
   // Tabs: dashboard, inventory, pos, prescriptions, logistics, adjustments, alerts, reports
-  const [activeTab, setActiveTab] = useState<string>(
-    userRole === "CAISSIER_PHARMACIEN" ? "pos" : "dashboard"
-  );
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (moduleMode === "sales") return "pos";
+    if (moduleMode === "stock") return "dashboard";
+    return userRole === "CAISSIER_PHARMACIEN" ? "pos" : "dashboard";
+  });
 
   // Main list data
   const [products, setProducts] = useState<any[]>([]);
@@ -28,6 +44,138 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
   const [alerts, setAlerts] = useState<any[]>([]);
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [inventories, setInventories] = useState<any[]>([]);
+
+  // Interactive clicks state for Schema 4 (TOUT EST CLIQUABLE)
+  const [medisahelClickModal, setMedisahelClickModal] = useState<any | null>(null);
+
+  const handlePharmacyCellClick = (type: string, p: any) => {
+    if (type === "product") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Dossier Technique Médicament & Posologie",
+        subtitle: `Produit : ${p.nomCommercial} (${p.dci})`,
+        badge: "FICHE TECH VIDAL",
+        sections: [
+          {
+            title: "Informations Pharmacologiques",
+            items: [
+              { label: "Nom Commercial", value: p.nomCommercial },
+              { label: "Dénomination Commune Internationale (DCI)", value: p.dci },
+              { label: "Classe Thérapeutique", value: p.classeTherapeutique || "Antibiotique / Inhibiteur de bêta-lactamase" },
+              { label: "Composition active", value: `${p.nomCommercial} sélénium microg / excipients` }
+            ]
+          },
+          {
+            title: "Posologie Standard & Contre-indications",
+            items: [
+              { label: "Recommandation standard", value: "1 comprimé 2 à 3 fois par jour, à prendre au cours des repas." },
+              { label: "Effets indésirables connus", value: "Troubles digestifs légers, céphalées passagères." },
+              { label: "Contre-indications absolues", value: "Hypersensibilité aux molécules de la même classe thérapeutique." }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "code") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Indexation des Lots, Traçabilité & Historique",
+        subtitle: `Réf : ${p.codeInterne || p.codeBarre}`,
+        badge: "CONTRÔLE LEGS FEFO",
+        sections: [
+          {
+            title: "Traçabilité Logistique",
+            items: [
+              { label: "Code Interne Clinique", value: p.codeInterne || "M-BKO-293" },
+              { label: "N° Numéro de Série unique", value: `SN-${p.id}-2026-MAL`, mono: true },
+              { label: "Fournisseur Officiel", value: "Pharmacie Populaire du Mali (PPM)" },
+              { label: "Fabricant pharmaceutique", value: "Labo Sanofi ou GSK France" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Consulter Historique des lots", onClick: () => { setMedisahelClickModal(null); setActiveTab("alerts"); } },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "forme") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Statistiques de Rotation & Vélocité d'Écoulement",
+        subtitle: `Forme galénique : ${p.forme}`,
+        badge: "STATISTIQUES DE ROTATION",
+        sections: [
+          {
+            title: "Indicateurs de Vélocité",
+            items: [
+              { label: "Forme principale", value: p.forme },
+              { label: "Dosage unitaire", value: p.dosage || "500 mg" },
+              { label: "Indice de rotation (ABC)", value: p.qtyMin <= 10 ? "Classe A (Fast-moving / Écoulement très rapide)" : "Classe B (Médium)" },
+              { label: "Durée moyenne de couverture", value: "18 jours d'autonomie" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "price") {
+      const margin = Math.round(p.priceVente * 0.25);
+      const buyPrice = p.priceVente - margin;
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Stabilité Commerciale & Grille des Prix Cliniques",
+        subtitle: `Coût unitaire produit : ${p.nomCommercial}`,
+        badge: "CONFORME CANAM COEFF",
+        sections: [
+          {
+            title: "Rentabilité & Grille Complète (FCFA)",
+            items: [
+              { label: "Prix d'Achat Standard", value: `${buyPrice.toLocaleString()} FCFA` },
+              { label: "Taxe TVA Hospitalière (18%)", value: "Exonéré (médicaments essentiels Mali)" },
+              { label: "Marge brute pharmacie passive", value: `${margin.toLocaleString()} FCFA (25%)` },
+              { label: "Prix Public Vente (Officine)", value: `${p.priceVente.toLocaleString()} FCFA` }
+            ]
+          },
+          {
+            title: "Régulation Assurance CANAM",
+            items: [
+              { label: "Taux de remboursement CANAM", value: "70% Coeff" },
+              { label: "Reste à payer Patient (Modérateur)", value: `${Math.round(p.priceVente * 0.30).toLocaleString()} FCFA` },
+              { label: "Part prise en charge", value: `${Math.round(p.priceVente * 0.70).toLocaleString()} FCFA` }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "movement") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Mouvements de Stocks & Cartes logistiques",
+        subtitle: `Fiches d'activité produit: ${p.nomCommercial}`,
+        badge: "INDEX DE FIABILITÉ",
+        sections: [
+          {
+            title: "Mise à disposition (Traceurs)",
+            items: [
+              { label: "Stock disponible Dépôt Central", value: `${p.quantityDepot} unités` },
+              { label: "Stock disponible Officine (Vente)", value: `${p.quantityOfficine} unités` },
+              { label: "Total Clinique MédiSahel", value: `${p.quantity} unités` },
+              { label: "Vérificateur inventaire", value: "Mamadou DIARRA (Chef d'officine)" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fiche de Mouvements complète", onClick: () => { setMedisahelClickModal(null); setActiveTab("logistics"); } },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    }
+  };
 
   // Helpers
   const [loading, setLoading] = useState(false);
@@ -529,17 +677,24 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
         <div>
           <div className="flex items-center gap-3">
             <div className="p-3 bg-teal-50 rounded-xl border border-teal-100">
-              <Pill className="h-6 w-6 text-teal-700" />
+              {moduleMode === "sales" ? (
+                <ShoppingCart className="h-6 w-6 text-teal-700" />
+              ) : (
+                <Pill className="h-6 w-6 text-teal-700" />
+              )}
             </div>
             <div>
               <h1 className="font-sans font-extrabold text-2xl text-slate-900 tracking-tight flex items-center gap-2">
-                PharmaDash Clinique V2
+                {moduleMode === "sales" ? "Vente Pharmacie" : "Gestion des Stocks Pharmacie"}
                 <span className="text-[10px] select-none uppercase font-extrabold tracking-widest px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200 animate-pulse">
-                  Connecté DME
+                  {moduleMode === "sales" ? "Guichet Unique" : "Gestion FEFO / Lots"}
                 </span>
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                Terminal d'apothicairerie hospitalière, gestion de stock FEFO, dispensaire de caisse et audit de conformité intégrés.
+                {moduleMode === "sales"
+                  ? "Dispensation des ordonnances de consultations (DME), ventes comptoir d'officine avec impression de reçus, facturation sécurisée et quittances de caisse complexes."
+                  : "Supervision logistique globale : fiches de produits d'officine, commandes fournisseurs à réceptionner, inventaires cliniques et alertes péremption."
+                }
               </p>
             </div>
           </div>
@@ -555,7 +710,7 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
       </div>
 
       {/* Main Alerts Banner */}
-      {alerts.length > 0 && (
+      {alerts.length > 0 && moduleMode !== "sales" && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
           <ShieldAlert className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
@@ -579,17 +734,38 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
       {/* Sub tabs navigation */}
       <div className="mb-6 border-b border-slate-200 flex overflow-x-auto gap-2 py-1 scrollbar-none">
         {[
-          { tab: "dashboard", label: "Tableau de Bord", icon: BarChart3, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK"] },
+          { tab: "dashboard", label: "Tableau de Bord", icon: BarChart3, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK", "CASHIER", "CAISSIER_PHARMACIEN"] },
           { tab: "inventory", label: "Stock Central & Officine", icon: Layers, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK", "CAISSIER_PHARMACIEN"] },
-          { tab: "pos", label: "Caisse & Vente POS", icon: ShoppingCart, roles: ["ADMIN", "PHARMACIST", "CAISSIER_PHARMACIEN"] },
-          { tab: "prescriptions", label: "Ordonnances DME", icon: ClipboardList, roles: ["ADMIN", "PHARMACIST", "CAISSIER_PHARMACIEN"] },
+          { tab: "pos", label: "Caisse & Vente POS", icon: ShoppingCart, roles: ["ADMIN", "PHARMACIST", "CAISSIER_PHARMACIEN", "CASHIER"] },
+          { tab: "prescriptions", label: "Ordonnances DME", icon: ClipboardList, roles: ["ADMIN", "PHARMACIST", "CAISSIER_PHARMACIEN", "CASHIER"] },
           { tab: "logistics", label: "Entrées & Logistique", icon: Truck, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK"] },
           { tab: "adjustments", label: "Pertes & Démarque", icon: AlertTriangle, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK"] },
           { tab: "alerts", label: "Alertes Péremption", icon: ShieldAlert, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK"] },
           { tab: "suppliers", label: "Fournisseurs", icon: Truck, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK"] },
           { tab: "inventories", label: "Inventaires Clinique", icon: CheckSquare, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK"] },
-          { tab: "reports", label: "Rapports d'Activité", icon: FileText, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK", "CAISSIER_PHARMACIEN"] },
-        ].filter(t => !t.roles || t.roles.includes(userRole)).map((btn) => {
+          { tab: "reports", label: "Rapports d'Activité", icon: FileText, roles: ["ADMIN", "PHARMACIST", "GESTIONNAIRE_STOCK", "CAISSIER_PHARMACIEN", "CASHIER"] },
+        ]
+        .filter(t => {
+          if (moduleMode === "sales") {
+            return ["dashboard", "pos", "prescriptions", "reports"].includes(t.tab);
+          } else if (moduleMode === "stock") {
+            return ["dashboard", "inventory", "logistics", "adjustments", "alerts", "suppliers", "inventories", "reports"].includes(t.tab);
+          }
+          return true;
+        })
+        .filter(t => {
+          if (!t.roles) return true;
+          if (userRole === "ADMIN") return true;
+          const allowedMods = currentUser?.allowedModules || [];
+          if (allowedMods.includes("pharmacy_sales") && moduleMode === "sales") {
+            return true;
+          }
+          if (allowedMods.includes("pharmacy_stock") && moduleMode === "stock") {
+            return true;
+          }
+          return t.roles.includes(userRole);
+        })
+        .map((btn) => {
           const IconComponent = btn.icon;
           const isActive = activeTab === btn.tab;
           return (
@@ -633,7 +809,141 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
 
       {/* ======================= TAB CONTENT : TABLEAU DE BORD ======================= */}
       {activeTab === "dashboard" && (
-        <div className="space-y-6" id="pharmacy-dash-view">
+        moduleMode === "sales" ? (
+          <div className="space-y-6" id="pharmacy-sales-dash">
+            {/* Sales Dashboard */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase font-mono">
+                  <span>Ventes du Jour</span>
+                  <ShoppingCart className="h-4.5 w-4.5 text-teal-600" />
+                </div>
+                <h2 className="text-3xl font-extrabold font-sans text-slate-900 mt-3">
+                  {sales.length} <span className="text-xs text-slate-400 font-normal">transactions</span>
+                </h2>
+                <p className="text-[10px] text-slate-400 mt-1">Nombre d'encaissements d'officine réalisés aujourd'hui.</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-[#0F766E]/20 shadow-sm bg-gradient-to-br from-teal-50/20 to-white">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase font-mono">
+                  <span>Montant du Jour</span>
+                  <DollarSign className="h-4.5 w-4.5 text-teal-655" />
+                </div>
+                <h2 className="text-3xl font-extrabold font-sans text-teal-700 mt-3">
+                  {getDailySalesTotal().toLocaleString("fr-FR")} <span className="text-xs text-slate-450 font-normal text-teal-600">FCFA</span>
+                </h2>
+                <p className="text-[10px] text-slate-455 mt-1">Cumul financier de caisse du guichet unique.</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase font-mono">
+                  <span>Patients Servis</span>
+                  <UserCheck className="h-4.5 w-4.5 text-indigo-500" />
+                </div>
+                <h2 className="text-3xl font-extrabold font-sans text-slate-900 mt-3">
+                  {Array.from(new Set(sales.map(s => s.patientName || s.patientId))).length} <span className="text-xs text-slate-400 font-normal">patients</span>
+                </h2>
+                <p className="text-[10px] text-slate-400 mt-1">Nombre de patients uniques servis au comptoir ou DME.</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase font-mono">
+                  <span>Panier Moyen</span>
+                  <Tag className="h-4.5 w-4.5 text-amber-500" />
+                </div>
+                <h2 className="text-3xl font-extrabold font-sans text-slate-900 mt-3">
+                  {(sales.length ? Math.round(getDailySalesTotal() / sales.length) : 0).toLocaleString("fr-FR")} <span className="text-xs text-slate-400 font-normal">FCFA</span>
+                </h2>
+                <p className="text-[10px] text-slate-400 mt-1">Moindre dépense moyenne estimée par ordonnance.</p>
+              </div>
+            </div>
+
+            {/* Top drugs list and list of transactions */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="font-sans font-bold text-sm text-slate-900 uppercase font-mono tracking-wider mb-4 flex items-center justify-between">
+                  <span>Top Médicaments Vendus</span>
+                  <Award className="h-4 w-4 text-amber-500" />
+                </h3>
+                <div className="space-y-4">
+                  {/* Derive top sold from sales array */}
+                  {(() => {
+                    const counts: any = {};
+                    sales.forEach((s: any) => {
+                      (s.items || []).forEach((itm: any) => {
+                        const name = itm.productName || "Médicament";
+                        counts[name] = (counts[name] || 0) + Number(itm.quantity);
+                      });
+                    });
+                    const topItems = Object.entries(counts)
+                      .map(([name, qty]) => ({ name, qty: qty as number }))
+                      .sort((a, b) => b.qty - a.qty)
+                      .slice(0, 5);
+                    if (topItems.length === 0) {
+                      return <p className="text-xs text-slate-400 italic">Aucune vente enregistrée pour le moment.</p>;
+                    }
+                    return topItems.map((itm, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-xs border-b border-slate-100 pb-2 last:border-none">
+                        <div>
+                          <p className="font-bold text-slate-800">{itm.name}</p>
+                          <p className="text-[10px] text-slate-400">Position #{idx+1} dans les déstockages</p>
+                        </div>
+                        <span className="bg-teal-50 text-teal-800 font-mono font-bold px-2.5 py-1 rounded-lg">
+                          {itm.qty} u.
+                        </span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-sans font-bold text-sm text-slate-900 uppercase font-mono tracking-wider">
+                    Dernières Ventes Réalisées
+                  </h3>
+                  <button onClick={() => setActiveTab("pos")} className="text-xs text-teal-700 font-bold hover:underline">
+                    Nouvelle Vente →
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-600">
+                    <thead className="bg-slate-50 text-slate-700 uppercase font-mono text-[9px]">
+                      <tr>
+                        <th className="p-3">Réf/Ticket</th>
+                        <th className="p-3">Patient</th>
+                        <th className="p-3">Paiement</th>
+                        <th className="p-3 text-right">Total</th>
+                        <th className="p-3 text-right">Montant Payé</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {sales.slice(-5).reverse().map((sale: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          <td className="p-3 font-mono font-bold text-slate-900">{sale.auditToken || `V-${sale.id}`}</td>
+                          <td className="p-3 font-bold text-slate-800">{sale.patientName}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded-full font-mono font-bold text-[9px] bg-slate-100 border text-slate-600">
+                              {sale.paymentMethod}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-bold text-slate-900">{sale.total.toLocaleString()} FCFA</td>
+                          <td className="p-3 text-right font-extrabold text-teal-750">{sale.amountPaid.toLocaleString()} FCFA</td>
+                        </tr>
+                      ))}
+                      {sales.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-slate-400 italic">Aucune vente enregistrée.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6" id="pharmacy-dash-view py-2">
           
           {/* Quick Metrics Bento */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -858,6 +1168,7 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
           </div>
 
         </div>
+        )
       )}
 
       {/* ======================= TAB CONTENT : GESTION INVENTAIRE DU STOCK ======================= */}
@@ -878,14 +1189,63 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
                 />
               </div>
 
-              <div className="flex gap-2">
-                {(userRole === "ADMIN" || userRole === "PHARMACIST" || userRole === "GESTIONNAIRE_STOCK") && (
+              <div className="flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const dataToExport = products.map((p: any) => ({
+                      code: p.codeInterne || "--",
+                      sku: p.codeBarre || "--",
+                      name: p.nomCommercial || "--",
+                      dci: p.dci || "--",
+                      classe: p.classeTherapeutique || "--",
+                      forme: p.forme || "--",
+                      dosage: p.dosage || "--",
+                      priceAchat: p.priceAchat || 0,
+                      priceVente: p.priceVente || 0,
+                      qtyOfficine: p.quantityOfficine || 0,
+                      qtyDepot: p.quantityDepot || 0,
+                      qtyTotal: (p.quantityOfficine || 0) + (p.quantityDepot || 0)
+                    }));
+                    exportToExcel(dataToExport, "INVENTAIRE_STOCKS_PHARMACIE_MEDISAHEL", {
+                      code: "Code Interne",
+                      sku: "Code Barre",
+                      name: "Désignation",
+                      dci: "DCI (Substance Active)",
+                      classe: "Classe Thérapeutique",
+                      forme: "Forme Galénique",
+                      dosage: "Dosage",
+                      priceAchat: "Prix d'Achat (FCFA)",
+                      priceVente: "Prix de Vente (FCFA)",
+                      qtyOfficine: "Quantité Officine",
+                      qtyDepot: "Quantité Dépôt",
+                      qtyTotal: "Stock Total"
+                    });
+                  }}
+                  className="inline-flex items-center px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-250 rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
+                  title="Exporter l'inventaire en format Excel"
+                >
+                  <Download className="h-4 w-4 mr-1.5 text-emerald-600" />
+                  Exporter Excel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => exportToPDF("pharmacy-inventory-details-table", "Registre d'Inventaire & Tarifs de Pharmacie")}
+                  className="inline-flex items-center px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-805 border border-indigo-250 rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
+                  title="Imprimer le registre d'inventaire"
+                >
+                  <Printer className="h-4 w-4 mr-1.5 text-indigo-650" />
+                  Imprimer Registre
+                </button>
+
+                {isStockManager && (
                   <button
                     onClick={() => { setShowProductForm(!showProductForm); }}
                     className="inline-flex items-center px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 cursor-pointer"
                   >
                     <Plus className="h-4 w-4 mr-1.5" />
-                    Créer Fiche Médicament
+                    Créer Fiche
                   </button>
                 )}
               </div>
@@ -1030,7 +1390,7 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
 
             {/* Inventory table block */}
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse" id="pharmacy-inventory-details-table">
                 <thead>
                   <tr className="border-b border-slate-150 text-slate-400 text-[10px] font-mono uppercase tracking-wider">
                     <th className="py-3 px-3">Nom Commercial & DCI</th>
@@ -1050,20 +1410,56 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
                     return (
                       <React.Fragment key={p.id}>
                         <tr className="hover:bg-slate-50/50">
-                          <td className="py-3.5 px-3">
+                          <td 
+                            onClick={() => handlePharmacyCellClick("product", p)}
+                            className="py-3.5 px-3 cursor-pointer hover:underline hover:text-teal-700 decoration-teal-600 transition"
+                            title="Consulter le dossier technique de ce médicament"
+                          >
                             <strong className="text-slate-950 font-bold block">{p.nomCommercial}</strong>
                             <span className="text-[10px] text-slate-500 font-mono italic">{p.dci}</span>
                           </td>
-                          <td className="py-3.5 px-3 font-mono text-slate-500">{p.codeInterne || p.codeBarre}</td>
-                          <td className="py-3.5 px-3 text-slate-600">{p.forme} ({p.dosage})</td>
-                          <td className="py-3.5 px-3 font-semibold text-slate-900">{p.priceVente.toLocaleString("fr-FR")} FCFA</td>
-                          <td className="py-3.5 px-3 text-center font-bold text-indigo-800">{p.quantityDepot} u</td>
-                          <td className="py-3.5 px-3 text-center">
-                            <span className={`inline-flex px-2 py-1 rounded-xl font-bold ${isOut ? "bg-red-100 text-red-900 border border-red-200" : isMin ? "bg-amber-100 text-amber-900 border border-amber-200" : "bg-teal-50 text-teal-800"}`}>
+                          <td 
+                            onClick={() => handlePharmacyCellClick("code", p)}
+                            className="py-3.5 px-3 font-mono text-slate-500 cursor-pointer hover:underline hover:text-teal-700 transition"
+                            title="Voir l'historique de traçabilité des lots FEFO"
+                          >
+                            {p.codeInterne || p.codeBarre}
+                          </td>
+                          <td 
+                            onClick={() => handlePharmacyCellClick("forme", p)}
+                            className="py-3.5 px-3 text-slate-600 cursor-pointer hover:underline hover:text-teal-700 transition"
+                            title="Voir les statistiques de rotation de cette forme galénique"
+                          >
+                            {p.forme} ({p.dosage})
+                          </td>
+                          <td 
+                            onClick={() => handlePharmacyCellClick("price", p)}
+                            className="py-3.5 px-3 font-semibold text-slate-900 cursor-pointer hover:underline hover:text-teal-700 transition"
+                            title="Consulter la stabilité des prix de vente & base CANAM"
+                          >
+                            {p.priceVente.toLocaleString("fr-FR")} FCFA
+                          </td>
+                          <td 
+                            onClick={() => handlePharmacyCellClick("movement", p)}
+                            className="py-3.5 px-3 text-center font-bold text-indigo-800 cursor-pointer hover:underline hover:text-indigo-700 transition"
+                            title="Voir les historiques de mouvements du dépôt central"
+                          >
+                            {p.quantityDepot} u
+                          </td>
+                          <td 
+                            onClick={() => handlePharmacyCellClick("movement", p)}
+                            className="py-3.5 px-3 text-center cursor-pointer"
+                            title="Voir les historiques de mouvements de l'officine"
+                          >
+                            <span className="inline-flex px-2 py-1 rounded-xl font-bold bg-teal-50 text-teal-850 hover:bg-teal-100 transition">
                               {p.quantityOfficine} u
                             </span>
                           </td>
-                          <td className="py-3.5 px-3 text-center font-mono font-extrabold text-slate-900 bg-slate-50/50">
+                          <td 
+                            onClick={() => handlePharmacyCellClick("movement", p)}
+                            className="py-3.5 px-3 text-center font-mono font-extrabold text-slate-900 bg-slate-50/50 cursor-pointer hover:bg-slate-100 transition"
+                            title="Voir l'historique complet pour le total clinique"
+                          >
                             {p.quantity} u
                           </td>
                           <td className="py-3.5 px-3 text-right">
@@ -2151,7 +2547,7 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
                 </p>
               </div>
 
-              {(userRole === "ADMIN" || userRole === "PHARMACIST" || userRole === "GESTIONNAIRE_STOCK") && (
+              {isStockManager && (
                 <button
                   onClick={() => {
                     setEditingSupplier(null);
@@ -2634,6 +3030,65 @@ export const PharmacyStock: React.FC<PharmacyStockProps> = ({ token, userRole })
               <div className="border-t w-48 text-center pt-2 font-bold text-slate-900">
                 <span>Signature Elect. : {printInventory.responsibleSignature}</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Modal for Everything is Clickable (TOUT EST CLIQUABLE) rule */}
+      {medisahelClickModal && medisahelClickModal.isOpen && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in" id="medisahel-clickable-modal">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-scale-in col-span-full">
+            <div className="p-5 border-b border-gray-150 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <span className="text-[9px] bg-indigo-100 text-indigo-800 border border-indigo-200 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                  {medisahelClickModal.badge || "MÉD_SAHEL SECURE"}
+                </span>
+                <h3 className="text-sm font-bold font-display text-slate-800 mt-1">{medisahelClickModal.title}</h3>
+                {medisahelClickModal.subtitle && (
+                  <p className="text-[11px] text-slate-500 font-medium font-sans mt-0.5">{medisahelClickModal.subtitle}</p>
+                )}
+              </div>
+              <button 
+                onClick={() => setMedisahelClickModal(null)}
+                className="p-1 px-2 border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg cursor-pointer transition font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[350px] overflow-y-auto w-full">
+              {medisahelClickModal.sections.map((sect: any, sIdx: number) => (
+                <div key={sIdx} className="space-y-2 text-left">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono block">
+                    {sect.title} :
+                  </span>
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 space-y-2.5">
+                    {sect.items.map((item: any, iIdx: number) => (
+                      <div key={iIdx} className="flex justify-between items-start gap-4 text-xs font-sans">
+                        <span className="text-slate-400 font-medium">{item.label}</span>
+                        <span className={`text-right text-slate-800 font-semibold ${item.mono ? "font-mono text-[10px]" : ""}`}>
+                          {item.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-gray-100 flex flex-wrap justify-end gap-2.5">
+              {medisahelClickModal.actions?.map((act: any, aIdx: number) => (
+                <button
+                  key={aIdx}
+                  onClick={act.onClick}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    act.primary 
+                      ? "bg-indigo-700 hover:bg-indigo-800 text-white shadow-md"
+                      : "bg-white hover:bg-slate-100 text-slate-705 border border-slate-200"
+                  }`}
+                >
+                  {act.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

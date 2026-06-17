@@ -42,7 +42,7 @@ export const memoryDb = {
       logoUrl: "Bamako Central",
       address: "Hamdallaye ACI 2000, Bamako, Mali",
       currency: "FCFA",
-      themeColor: "#0f766e", // teal-700
+      themeColor: "#1e3a5f", // #1E3A5F
       slogan: "Votre santé, notre engagement au quotidien",
       city: "Bamako",
       country: "Mali",
@@ -54,7 +54,28 @@ export const memoryDb = {
       rccm: "MA-BKO-2024-B-1240",
       ifuNif: "NIF-084210457-H",
       digitalStamp: "[CACHET NUMÉRIQUE MÉDISAHEL CLINIQUE]",
-      instSignature: "Pour la Direction Médicale, le Médecin Chef"
+      instSignature: "Pour la Direction Médicale, le Médecin Chef",
+      faviconUrl: "💉",
+      secondaryColor: "#2E8B57",
+      accentColor: "#E67E22",
+      bgColor: "#F5F5F5",
+      textColor: "#333333",
+      clinicalStamp: "",
+      pdfHeader: "MÉDISAHEL CLINIQUE BAMAKO V2\nUrologie - Chirurgie - Consultations d'Urgence",
+      pdfFooter: "Hamdallaye ACI 2000, Bamako – Tél : +223 73 65 14 67 – Slogan: Votre santé, notre engagement",
+      timezone: "Afrique/Bamako",
+      dateFormat: "DD/MM/YYYY",
+      timeFormat: "HH:MM",
+      mainLanguage: "Français",
+      secondLanguage: "Bambara",
+      departmentsList: JSON.stringify(["Médecine Générale", "Chirurgie", "Pédiatrie", "Maternité / CPN", "Urgences"]),
+      servicesList: JSON.stringify(["Médecine Interne", "Urgences & Triage", "Gynécologie", "Pédiatrie", "Chirurgie Générale"]),
+      ethniesList: JSON.stringify(["Bambara", "Peulh", "Soninké", "Malinké", "Sénoufo", "Dogon", "Songhaï", "Bobo", "Bozo", "Minianka", "Tamasheq", "Arabe", "Kassonké", "Touareg", "Maure", "Somono", "Jakhanké", "Samogho", "Sorko"]),
+      nationalitiesList: JSON.stringify(["Malienne", "Sénégalaise", "Ivoirienne", "Burkinabé", "Guinéenne", "Mauritanienne", "Algérienne", "Française"]),
+      analysisTypesList: JSON.stringify(["NFS (Numération Formule Sanguine)", "Goutte Épaisse & TDR", "Glycémie à jeun", "ECBU (Urine)", "Bilan rénal (Urée/Créatinine)", "Widal et Félix", "Uricémie", "Cholestérol total"]),
+      medicamentsList: JSON.stringify(["Coartem 20/120mg", "Amoxicilline 1g Sandoz", "Paracétamol 1g Biogaran", "Spasfon 80mg Lyoc", "Insuline Lantus Solostar", "Ibuprofène 400mg", "Ciprofloxacine 500mg"]),
+      suppliersList: JSON.stringify(["Laborex Mali", "Mali Pharma SA", "Ubipharm Mali", "Pharmacie Impériale Bamako"]),
+      delayReasonsList: JSON.stringify(["Embouteillages pont de Bamako", "Panne de véhicule / Moto", "Problème familial d'urgence", "Consultation de nuit imprévue", "Pluie diluvienne"])
     },
     {
       id: "clinic-2",
@@ -98,6 +119,21 @@ export const memoryDb = {
     }
   ] as any[],
 
+  roles: [
+    { id: "ADMIN", label: "Administrateur Système IT", code: "ADMIN", order: 1 },
+    { id: "MEDECIN_GENERAL_CHIEF", label: "Médecin Chef Département", code: "MEDECIN_GENERAL_CHIEF", order: 2 },
+    { id: "DOCTOR", label: "Médecin de Spécialité / Référent", code: "DOCTOR", order: 3 },
+    { id: "NURSE", label: "Personnel Infirmier", code: "NURSE", order: 4 },
+    { id: "PHARMACIST", label: "Pharmacien Hospitalier", code: "PHARMACIST", order: 5 },
+    { id: "LAB_TECH", label: "Technicien Supérieur Biologie", code: "LAB_TECH", order: 6 },
+    { id: "CASHIER", label: "Caissier Principal", code: "CASHIER", order: 7 },
+    { id: "HR", label: "Responsable RH", code: "HR", order: 8 },
+    { id: "STAGIAIRE", label: "Stagiaire Médical", code: "STAGIAIRE", order: 9 },
+    { id: "AIDE_SOIGNANT", label: "Aide-Soignant d'Urgence", code: "AIDE_SOIGNANT", order: 10 },
+    { id: "CAISSIER_PHARMACIEN", label: "Caissier-Pharmacien d'Officine", code: "CAISSIER_PHARMACIEN", order: 11 },
+    { id: "GESTIONNAIRE_STOCK", label: "Gestionnaire de Stockage", code: "GESTIONNAIRE_STOCK", order: 12 }
+  ] as any[],
+
   users: [
     {
       id: "user-admin",
@@ -112,10 +148,11 @@ export const memoryDb = {
       contractType: "CDI",
       department: "Direction Générale",
       phone: "+223 73 65 14 67",
-      mustChangePassword: true, // MUST change password on first login!
+      mustChangePassword: false, // ADMIN never needs to change password
       clinicId: "clinic-1",
       status: "ACTIVE",
-      allowedModules: ["patients", "dme", "hospitalization", "dmg", "billing", "pharmacy", "lab", "presences", "payroll", "appointments", "documents", "users", "branding", "audit"],
+      allowedModules: ["dashboard", "patients", "dme", "hospitalization", "dmg", "billing", "pharmacy_sales", "pharmacy_stock", "lab", "presences", "payroll", "appointments", "documents", "clinical-admin", "users", "branding", "audit", "emailing"],
+      permissions: ["*:ADMIN"],
       roleHistory: []
     },
     {
@@ -191,7 +228,7 @@ export const memoryDb = {
       mustChangePassword: false,
       clinicId: "clinic-1",
       status: "ACTIVE",
-      allowedModules: ["billing"],
+      allowedModules: ["dashboard", "patients", "billing", "pharmacy_sales"],
       roleHistory: []
     },
     {
@@ -210,7 +247,7 @@ export const memoryDb = {
       mustChangePassword: false,
       clinicId: "clinic-1",
       status: "ACTIVE",
-      allowedModules: ["pharmacy"],
+      allowedModules: ["dashboard", "pharmacy_stock"],
       roleHistory: []
     },
     {
@@ -249,6 +286,82 @@ export const memoryDb = {
       clinicId: "clinic-1",
       status: "ACTIVE",
       allowedModules: ["presences", "payroll"],
+      roleHistory: []
+    },
+    {
+      id: "user-dr-sangare",
+      email: "dr_sangare@medisahel.ml",
+      passwordHash: bcrypt.hashSync("DoctorPassword2026!", 10),
+      name: "Dr. Amadou SANGARÉ",
+      firstName: "Amadou",
+      lastName: "SANGARÉ",
+      login: "dr_sangare",
+      role: "DOCTOR",
+      profession: "Médecin Généraliste",
+      contractType: "CDI",
+      department: "Médecine Générale",
+      phone: "+223 76 54 32 10",
+      mustChangePassword: false,
+      clinicId: "clinic-1",
+      status: "ACTIVE",
+      allowedModules: ["patients", "dme", "hospitalization", "lab", "dmg", "appointments"],
+      roleHistory: []
+    },
+    {
+      id: "user-infirmier-test",
+      email: "infirmier_test@medisahel.ml",
+      passwordHash: bcrypt.hashSync("InfirmierPassword2026!", 10),
+      name: "Infirmier de Garde Test",
+      firstName: "Infirmier",
+      lastName: "TEST",
+      login: "infirmier_test",
+      role: "NURSE",
+      profession: "Infirmier Qualifié",
+      contractType: "CDD",
+      department: "Hospitalisation",
+      phone: "+223 66 77 88 02",
+      mustChangePassword: false,
+      clinicId: "clinic-1",
+      status: "ACTIVE",
+      allowedModules: ["patients", "hospitalization", "dmg", "appointments"],
+      roleHistory: []
+    },
+    {
+      id: "user-stagiaire-test",
+      email: "stagiaire_test@medisahel.ml",
+      passwordHash: bcrypt.hashSync("StagiairePassword2026!", 10),
+      name: "Stagiaire Académique Test",
+      firstName: "Stagiaire",
+      lastName: "TEST",
+      login: "stagiaire_test",
+      role: "DOCTOR",
+      profession: "Médecin Stagiaire",
+      contractType: "Stage",
+      department: "Médecine Générale",
+      phone: "+223 65 44 33 03",
+      mustChangePassword: false,
+      clinicId: "clinic-1",
+      status: "ACTIVE",
+      allowedModules: ["patients", "dme", "dmg"],
+      roleHistory: []
+    },
+    {
+      id: "user-caissier-test",
+      email: "caissier_test@medisahel.ml",
+      passwordHash: bcrypt.hashSync("CaissierPassword2026!", 10),
+      name: "Caissier Principal Test",
+      firstName: "Caissier",
+      lastName: "TEST",
+      login: "caissier_test",
+      role: "CASHIER",
+      profession: "Agent de Caisse",
+      contractType: "CDD",
+      department: "Facturation & Caisse",
+      phone: "+223 71 22 33 04",
+      mustChangePassword: false,
+      clinicId: "clinic-1",
+      status: "ACTIVE",
+      allowedModules: ["dashboard", "patients", "billing", "pharmacy_sales"],
       roleHistory: []
     }
   ] as any[],
@@ -610,6 +723,57 @@ export const memoryDb = {
   ] as any[],
 
   receiptDispatches: [] as any[],
+
+  dmeArchives: [
+    {
+      id: "arch-init-4",
+      patientId: "patient-1",
+      actionType: "constante",
+      entityType: "constante",
+      entityId: "c-101",
+      content: "{\"values\":\"TA: 120/80, Pouls: 75, Temp: 38.9°C\",\"details\":\"Paramètres de constantes cliniques pris par le personnel soignant\"}",
+      performedBy: "Infirmière Fatoumata D.",
+      performedAt: "2026-06-16T09:38:00.000Z",
+      ipAddress: "192.168.1.42",
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0.0.0"
+    },
+    {
+      id: "arch-init-3",
+      patientId: "patient-1",
+      actionType: "examen",
+      entityType: "analyse",
+      entityId: "l-101",
+      content: "{\"results\":\"NFS + Goutte épaisse\",\"emergency\":true,\"category\":\"BLOOD\"}",
+      performedBy: "Dr Sangaré",
+      performedAt: "2026-06-16T09:36:00.000Z",
+      ipAddress: "192.168.1.10",
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/15.6.1"
+    },
+    {
+      id: "arch-init-2",
+      patientId: "patient-1",
+      actionType: "prescription",
+      entityType: "ordonnance",
+      entityId: "o-101",
+      content: "{\"itemString\":\"Artéméther/Luméfantrine - 3 comprimés/jour - 3j\\nParacétamol 500 mg - 3x/j - 5j\",\"medications\":[\"Artéméther/Luméfantrine - 3 comprimés/jour - 3j\",\"Paracétamol 500 mg - 3x/j - 5j\"]}",
+      performedBy: "Dr Sangaré",
+      performedAt: "2026-06-16T09:35:00.000Z",
+      ipAddress: "192.168.1.10",
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/15.6.1"
+    },
+    {
+      id: "arch-init-1",
+      patientId: "patient-1",
+      actionType: "validation",
+      entityType: "validation",
+      entityId: "v-101",
+      content: "{\"notes\":\"Consultation - Diagnostic : Paludisme simple (1F40)\",\"signature\":\"✅ Signé électroniquement\"}",
+      performedBy: "Dr Sangaré",
+      performedAt: "2026-06-16T09:32:00.000Z",
+      ipAddress: "192.168.1.10",
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/15.6.1"
+    }
+  ] as any[],
 
   pharmacyProducts: [
     {
@@ -1646,6 +1810,18 @@ export const db = {
         return newItem;
       }
       return getPrisma().attendance.create({ data: newItem });
+    },
+    async update(id: string, data: any) {
+      await db.testConnection();
+      if (useBackupMemory) {
+        const idx = memoryDb.attendances.findIndex(a => a.id === id);
+        if (idx !== -1) {
+          memoryDb.attendances[idx] = { ...memoryDb.attendances[idx], ...data };
+          return memoryDb.attendances[idx];
+        }
+        return null;
+      }
+      return getPrisma().attendance.update({ where: { id }, data });
     }
   },
 
@@ -2152,6 +2328,63 @@ export const db = {
         where: { id },
         data: updateData
       });
+    }
+  },
+
+  // AUDIT LOGS
+  dmeArchives: {
+    async findMany(patientId?: string) {
+      await db.testConnection();
+      if (useBackupMemory) {
+        if (patientId) {
+          return (memoryDb.dmeArchives || []).filter((a: any) => a.patientId === patientId);
+        }
+        return memoryDb.dmeArchives || [];
+      }
+      try {
+        if (patientId) {
+          return await getPrisma().dmeArchive.findMany({
+            where: { patientId },
+            orderBy: { performedAt: "desc" }
+          });
+        }
+        return await getPrisma().dmeArchive.findMany({
+          orderBy: { performedAt: "desc" }
+        });
+      } catch (err) {
+        if (patientId) {
+          return (memoryDb.dmeArchives || []).filter((a: any) => a.patientId === patientId);
+        }
+        return memoryDb.dmeArchives || [];
+      }
+    },
+    async create(data: any) {
+      await db.testConnection();
+      const newItem = {
+        id: data.id || "arch-" + Math.random().toString(36).substr(2, 9),
+        patientId: data.patientId || "",
+        actionType: data.actionType || "",
+        entityType: data.entityType || "",
+        entityId: data.entityId || "",
+        content: typeof data.content === "string" ? data.content : JSON.stringify(data.content),
+        performedBy: data.performedBy || "",
+        performedAt: data.performedAt ? new Date(data.performedAt).toISOString() : new Date().toISOString(),
+        ipAddress: data.ipAddress || "127.0.0.1",
+        userAgent: data.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      };
+
+      if (useBackupMemory) {
+        if (!memoryDb.dmeArchives) memoryDb.dmeArchives = [];
+        memoryDb.dmeArchives.unshift(newItem);
+        return newItem;
+      }
+      try {
+        return await getPrisma().dmeArchive.create({ data: newItem });
+      } catch (err) {
+        if (!memoryDb.dmeArchives) memoryDb.dmeArchives = [];
+        memoryDb.dmeArchives.unshift(newItem);
+        return newItem;
+      }
     }
   },
 
@@ -3837,6 +4070,43 @@ export const db = {
         memoryDb.emailLogs.unshift(newItem);
         return newItem;
       }
+    }
+  },
+
+  roles: {
+    async findMany() {
+      await db.testConnection();
+      return memoryDb.roles;
+    },
+    async create(data: any) {
+      await db.testConnection();
+      const code = data.code || data.label.toUpperCase().replace(/[^A-Z0-9_]+/g, "_");
+      const newItem = {
+        id: "role-" + Math.random().toString(36).substr(2, 9),
+        label: data.label,
+        code: code,
+        order: data.order || (memoryDb.roles.length + 1)
+      };
+      memoryDb.roles.push(newItem);
+      return newItem;
+    },
+    async update(id: string, data: any) {
+      await db.testConnection();
+      const idx = memoryDb.roles.findIndex(r => r.id === id || r.code === id);
+      if (idx > -1) {
+        memoryDb.roles[idx] = { ...memoryDb.roles[idx], ...data };
+        return memoryDb.roles[idx];
+      }
+      return null;
+    },
+    async delete(id: string) {
+      await db.testConnection();
+      const idx = memoryDb.roles.findIndex(r => r.id === id || r.code === id);
+      if (idx > -1) {
+        const deleted = memoryDb.roles.splice(idx, 1)[0];
+        return deleted;
+      }
+      return null;
     }
   },
 

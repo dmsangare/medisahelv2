@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { ShieldCheck, Search, Database, Clock } from "lucide-react";
+import { ShieldCheck, Search, Database, Clock, Download, FileText } from "lucide-react";
 import { AuditLog } from "../types.ts";
+import { exportToExcel, exportToPDF } from "../utils/exportUtils";
 
 interface AuditTrailProps {
   token: string | null;
@@ -53,15 +54,38 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({ token }) => {
       </div>
 
       <div className="p-6">
-        <div className="flex bg-slate-100 items-center px-3.5 py-2.5 rounded-xl border border-gray-200 mb-6 max-w-sm">
-          <Search className="h-4 w-4 text-gray-400 mr-2" />
-          <input
-            type="text"
-            placeholder="Filtrer l'audit par acteur, action ou mot clé..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="bg-transparent text-sm w-full focus:outline-none"
-          />
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6" id="audit-export-controls">
+          <div className="flex bg-slate-100 items-center px-3.5 py-2.5 rounded-xl border border-gray-200 w-full md:max-w-md">
+            <Search className="h-4 w-4 text-gray-400 mr-2" />
+            <input
+              type="text"
+              placeholder="Filtrer l'audit par acteur, action ou mot clé..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="bg-transparent text-sm w-full focus:outline-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => exportToExcel(filteredLogs, "journal_audit_medisahel", {
+                id: "ID",
+                timestamp: "Date Heure",
+                userName: "Acteur",
+                role: "Rôle",
+                action: "Action",
+                details: "Détails"
+              })}
+              className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-850 rounded-xl text-xs font-bold font-sans flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Download className="h-3.5 w-3.5" /> Exporter Excel
+            </button>
+            <button
+              onClick={() => exportToPDF("audit-logs-output", "Registre d'Audit et Traçabilité")}
+              className="px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-850 rounded-xl text-xs font-bold font-sans flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <FileText className="h-3.5 w-3.5" /> Exporter PDF / Imprimer
+            </button>
+          </div>
         </div>
 
         {loading ? (

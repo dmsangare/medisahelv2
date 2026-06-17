@@ -84,6 +84,27 @@ model Clinic {
   ifuNif          String?
   digitalStamp    String?
   instSignature   String?
+  faviconUrl         String?
+  secondaryColor     String?  @default("#2E8B57")
+  accentColor        String?  @default("#E67E22")
+  bgColor            String?  @default("#F5F5F5")
+  textColor          String?  @default("#333333")
+  clinicalStamp      String?
+  pdfHeader          String?
+  pdfFooter          String?
+  timezone           String?  @default("Afrique/Bamako")
+  dateFormat         String?  @default("DD/MM/YYYY")
+  timeFormat         String?  @default("HH:MM")
+  mainLanguage       String?  @default("Français")
+  secondLanguage     String?  @default("Bambara")
+  departmentsList    String?
+  servicesList       String?
+  ethniesList        String?
+  nationalitiesList  String?
+  analysisTypesList  String?
+  medicamentsList    String?
+  suppliersList      String?
+  delayReasonsList   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   users           User[]
@@ -119,6 +140,15 @@ model Patient {
   address        String?
   ethnie         String            @default("Non renseignée")
   nationalite    String            @default("Non renseignée")
+  maritalStatus  String?
+  profession     String?
+  language       String?
+  commune        String?
+  quartier       String?
+  emergencyContact String?
+  nina           String?
+  amo            String?
+  inps           String?
   status         String            @default("ACTIVE") // ACTIVE, ARCHIVED
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -615,6 +645,19 @@ model EmailRecipient {
   name      String
   status    String   @default("PENDING") // PENDING, SENT, FAILED
   sentAt    DateTime?
+}
+
+model DmeArchive {
+  id          String   @id @default(uuid())
+  patientId   String
+  actionType  String   // prescription, examen, constante, diagnostic, modification, validation
+  entityType  String   // ordonnance, analyse, imagerie, soin, etc.
+  entityId    String?
+  content     String   // Store serialized complete content of action (JSON string)
+  performedBy String   // Name or ID of doctor/nurse
+  performedAt DateTime @default(now())
+  ipAddress   String?  @default("127.0.0.1")
+  userAgent   String?  @default("WebBrowser")
 }
 
 

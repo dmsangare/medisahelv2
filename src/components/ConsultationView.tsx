@@ -28,6 +28,7 @@ export default function ConsultationView({
   const [motif, setMotif] = useState("");
   const [diagnostic, setDiagnostic] = useState("");
   const [codeCIM10, setCodeCIM10] = useState("");
+  const [classificationVersion, setClassificationVersion] = useState<"CIM-10" | "CIM-11">("CIM-11");
   const [prescription, setPrescription] = useState("");
   const [notesCliniques, setNotesCliniques] = useState("");
   const [certificatDuree, setCertificatDuree] = useState(0);
@@ -264,15 +265,88 @@ export default function ConsultationView({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Classification ICD-10 internationale</label>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-slate-600">Classification Diagnostic Clinique</label>
+                    <div className="bg-slate-100 p-0.5 rounded border flex text-[9px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClassificationVersion("CIM-10");
+                          setCodeCIM10("B50.9");
+                        }}
+                        className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${classificationVersion === "CIM-10" ? "bg-white text-zinc-900 shadow-3xs" : "text-slate-500"}`}
+                      >
+                        CIM-10 (ICD-10)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClassificationVersion("CIM-11");
+                          setCodeCIM10("1F40");
+                        }}
+                        className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${classificationVersion === "CIM-11" ? "bg-white text-zinc-900 shadow-3xs" : "text-slate-500"}`}
+                      >
+                        CIM-11 (ICD-11)
+                      </button>
+                    </div>
+                  </div>
+
                   <input
                     type="text"
-                    placeholder="ex: B50.9 - Paludisme falciparum"
-                    className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none font-mono"
+                    placeholder={classificationVersion === "CIM-11" ? "Code ex: 1F40 (Paludisme)" : "Code ex: B50.9 - Paludisme"}
+                    className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 outline-none font-mono font-bold text-teal-900"
                     value={codeCIM10}
                     onChange={(e) => setCodeCIM10(e.target.value)}
                   />
+
+                  {/* Quick selection library */}
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {classificationVersion === "CIM-11" ? (
+                      [
+                        { code: "1F40", desc: "Paludisme (Malaria)" },
+                        { code: "LB00.5", desc: "Hypertension HTA" },
+                        { code: "5B51.1", desc: "Diabète Type 2" },
+                        { code: "1E12", desc: "Rougeole" },
+                        { code: "1A00", desc: "Choléra" },
+                        { code: "1B10", desc: "Tuberculose" },
+                        { code: "GC08", desc: "Infection urinaire" }
+                      ].map(item => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          onClick={() => {
+                            setCodeCIM10(`${item.code} - ${item.desc}`);
+                            setDiagnostic(item.desc);
+                          }}
+                          className="bg-slate-100 hover:bg-zinc-200 text-slate-700 px-1.5 py-0.5 rounded text-[9px] transition-colors cursor-pointer border font-mono"
+                        >
+                          <strong className="text-teal-700 mr-1">{item.code}</strong> {item.desc}
+                        </button>
+                      ))
+                    ) : (
+                      [
+                        { code: "B50.9", desc: "Paludisme falciparum" },
+                        { code: "I10", desc: "HTA essentielle" },
+                        { code: "E11.9", desc: "Diabète non insulino-dep." },
+                        { code: "B05.9", desc: "Rougeole sans complication" },
+                        { code: "A00.9", desc: "Choléra, non spécifié" },
+                        { code: "A15.0", desc: "Tuberculose pulmonaire" }
+                      ].map(item => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          onClick={() => {
+                            setCodeCIM10(`${item.code} - ${item.desc}`);
+                            setDiagnostic(item.desc);
+                          }}
+                          className="bg-slate-100 hover:bg-zinc-200 text-slate-700 px-1.5 py-0.5 rounded text-[9px] transition-colors cursor-pointer border font-mono"
+                        >
+                          <strong className="text-blue-700 mr-1">{item.code}</strong> {item.desc}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -30,15 +30,33 @@ import {
   ClipboardList,
   TrendingUp
 } from "lucide-react";
-import { Hospitalization, Patient } from "../types.ts";
+import { Hospitalization, Patient, User } from "../types.ts";
 
 interface HospitalizationTrackerProps {
   token: string | null;
   patients: Patient[];
   userRole: string;
+  currentUser?: User;
 }
 
-export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ token, patients, userRole }) => {
+export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ token, patients, userRole, currentUser }) => {
+  const isHospUser = currentUser?.allowedModules?.includes("hospitalization") || false;
+  
+  const canReadHosp = userRole === "ADMIN" || 
+    userRole === "DOCTOR" || 
+    userRole === "NURSE" || 
+    userRole === "MEDECIN_GENERAL_CHIEF" || 
+    userRole === "AIDE_SOIGNANT" || 
+    isHospUser;
+  
+  const canWriteHosp = userRole === "ADMIN" || 
+    userRole === "DOCTOR" || 
+    userRole === "NURSE" || 
+    userRole === "MEDECIN_GENERAL_CHIEF" || 
+    isHospUser;
+  
+  const isAdminHosp = userRole === "ADMIN" || isHospUser;
+
   const [activeTab, setActiveTab] = useState<"dashboard" | "admissions" | "rooms" | "beds" | "rates" | "transfers" | "reservations" | "stats" | "dg_dashboard">("dashboard");
   
   // Data States
@@ -51,6 +69,160 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
   });
   const [transfers, setTransfers] = useState<any[]>([]);
   const [reservations, setReservations] = useState<any[]>([]);
+
+  // Interactive clicks state for Schema 5 (TOUT EST CLIQUABLE - Hospitalisation)
+  const [medisahelClickModal, setMedisahelClickModal] = useState<any | null>(null);
+
+  const handleHospCellClick = (type: string, item: Hospitalization) => {
+    const patient = patients.find(p => p.id === item.patientId);
+    const patientName = patient ? `${patient.lastName.toUpperCase()} ${patient.firstName}` : "Patient Hospitalisé";
+    const est = getEstimatedBill(item);
+
+    if (type === "patient") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Dossier Patient DME Unifié - Hospitalisation active",
+        subtitle: `Dossier clinique de ${patientName}`,
+        badge: "DME SÉCURISÉ",
+        sections: [
+          {
+            title: "Informations Administratives & Identité",
+            items: [
+              { label: "Nom & Prénom", value: patientName },
+              { label: "N° Identité National (NID)", value: patient?.nationalId || "P-9921-SEG" },
+              { label: "Date de naissance / Genre", value: `${patient?.dateOfBirth || "N/A"} (${patient?.gender || "N/A"})` },
+              { label: "Téléphone", value: patient?.phone || "+223 76 54 32 10" },
+              { label: "Adresse physique", value: patient?.address || "Bamako, Mali" }
+            ]
+          },
+          {
+            title: "Antécédents du Séjour actif",
+            items: [
+              { label: "Groupe Sanguin", value: patient?.bloodType || "O+" },
+              { label: "Allergies signalées", value: patient?.allergies || "Aucune" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "room") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "AFFECTATION DU LIT & CONFORMITÉ SALLE",
+        subtitle: `Localisation : Chambre ${item.roomNumber} | Lit ${item.bedNumber}`,
+        badge: "CONFORME HYGIÈNE",
+        sections: [
+          {
+            title: "Attribution Logistique",
+            items: [
+              { label: "Chambre", value: `Chambre ${item.roomNumber}` },
+              { label: "N° Lit assigné", value: `Lit ${item.bedNumber}` },
+              { label: "Catégorie de la Chambre", value: item.roomType || "Classique" },
+              { label: "Spécificité du lit", value: item.bedType || "Standard" }
+            ]
+          },
+          {
+            title: "Maintenance & Équipe d'étage",
+            items: [
+              { label: "État de propreté certifié", value: "Validé conforme (Draps jetables neufs, ventilation active)." },
+              { label: "Infirmière d'étage", value: "Aïssata DIALLO (Superviseuse)" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "cost") {
+      const roomCost = item.roomType ? ((rates.roomRates as Record<string, number>)[item.roomType] || 0) : 0;
+      const bedCost = item.bedType ? ((rates.bedRates as Record<string, number>)[item.bedType] || 0) : 0;
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "DÉCOMPTE FINANCIER DÉTAILLÉ DU SÉJOUR",
+        subtitle: `Suivi facturation en cours - ID ${item.id}`,
+        badge: "COÛTS SIMULÉS",
+        sections: [
+          {
+            title: "Indexation journalière des coûts (FCFA)",
+            items: [
+              { label: "Tarif unitaire Chambre", value: `${roomCost.toLocaleString()} FCFA / jour` },
+              { label: "Surcoût spécification de Lit", value: `${bedCost.toLocaleString()} FCFA / jour` },
+              { label: "Nombre de jours calculés", value: `${est.totalStayDays} jour(s)` },
+              { label: "Total brut généré", value: `${est.totalPrice.toLocaleString()} FCFA` }
+            ]
+          },
+          {
+            title: "Régulation Remboursement Assurance",
+            items: [
+              { label: "Organisme payeur tiers", value: "CANAM Active (70%)" },
+              { label: "Prise en charge Couverture", value: `${Math.round(est.totalPrice * 0.70).toLocaleString()} FCFA` },
+              { label: "Ticket modérateur net Patient", value: `${Math.round(est.totalPrice * 0.30).toLocaleString()} FCFA` }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "dates") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "PLANNING D'ADMISSION & CYCLE DE SÉJOUR",
+        subtitle: `Patient : ${patientName}`,
+        badge: "VALIDE STAMPS",
+        sections: [
+          {
+            title: "Traçabilité Calendaire",
+            items: [
+              { label: "Date d'admission officielle", value: new Date(item.admissionDate).toLocaleString() },
+              { label: "Durée actuelle constatée", value: `${est.totalStayDays} jours` },
+              { label: "Date de sortie estimée", value: item.dischargeDate ? new Date(item.dischargeDate).toLocaleDateString() : "Non programmée (selon avis médical quotidien)" }
+            ]
+          },
+          {
+            title: "Validation d'autorisation de sortie",
+            items: [
+              { label: "Pris requis cliniques", value: "Constantes stables, apyrexie avérée depuis 24h, bilan de sortie rédigé." },
+              { label: "Signature Médecin Représentant", value: "Attente de validation en fin de protocole." }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "reason") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "FICHE CLINIQUE DE PRE-ADMISSION (SOURCE)",
+        subtitle: `Motif d'hospitalisation de : ${patientName}`,
+        badge: "SOURCE CLINIQUE",
+        sections: [
+          {
+            title: "Rapport de Décision Médicale",
+            items: [
+              { label: "Motif ou diagnostic initial", value: item.reason },
+              { label: "Observation clinique d'entrée", value: item.notes || "Aucune observation libre complémentaire." },
+              { label: "Médecin ordonnateur", value: "Dr. Ibrahim Touré (Urgences médicales)" }
+            ]
+          },
+          {
+            title: "Constantes d'arrivée (SAS)",
+            items: [
+              { label: "Température à l'entrée", value: "39.1 °C" },
+              { label: "Tension Artérielle d'arrivée", value: "110/60 mmHg" },
+              { label: "Degré d'urgence", value: "Urgence relative (Priorité Standard)" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    }
+  };
 
   // Clinical Workspace Unified Espace States
   const [selectedClinicalHosp, setSelectedClinicalHosp] = useState<Hospitalization | null>(null);
@@ -2451,20 +2623,36 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                     {hospitalizations.map(item => {
                       const est = getEstimatedBill(item);
                       return (
-                        <tr key={item.id} className={item.status === "ADMITTED" ? "bg-amber-50/10" : "bg-white opacity-70"}>
-                          <td className="p-4">
+                        <tr key={item.id} className={item.status === "ADMITTED" ? "bg-amber-50/10 hover:bg-slate-50/80 transition" : "bg-white opacity-70 hover:bg-slate-50/80 transition"}>
+                          <td 
+                            onClick={() => handleHospCellClick("patient", item)}
+                            className="p-4 cursor-pointer hover:underline hover:text-indigo-700 transition"
+                            title="Consulter le dossier d'identification DME Unifié de ce patient"
+                          >
                             <span className="font-extrabold text-gray-900 block">{getPatientFullName(item.patientId)}</span>
                             <span className="text-[10px] text-gray-400 tracking-wide font-mono mt-0.5 block">{item.id}</span>
                           </td>
-                          <td className="p-4">
+                          <td 
+                            onClick={() => handleHospCellClick("room", item)}
+                            className="p-4 cursor-pointer hover:underline hover:text-indigo-700 transition"
+                            title="Consulter l'affectation de lit et propreté de la chambre d'étage"
+                          >
                             <span className="font-extrabold text-slate-800">Chambre {item.roomNumber}</span>
                             <span className="text-xs text-slate-500 block">Lit : {item.bedNumber} ({item.bedType})</span>
                           </td>
-                          <td className="p-4">
+                          <td 
+                            onClick={() => handleHospCellClick("cost", item)}
+                            className="p-4 cursor-pointer hover:underline hover:text-indigo-700 transition"
+                            title="Consulter le décompte financier détaillé et couverture CANAM"
+                          >
                             <span className="font-extrabold text-teal-950 block">{est.totalPrice.toLocaleString()} FCFA</span>
                             <span className="text-[10px] text-slate-400 font-medium block">Room: {item.roomType}</span>
                           </td>
-                          <td className="p-4">
+                          <td 
+                            onClick={() => handleHospCellClick("dates", item)}
+                            className="p-4 cursor-pointer hover:underline hover:text-indigo-700 transition"
+                            title="Consulter le planning d'admission officielle et date de sortie de séjour estimée"
+                          >
                             <div className="text-xs space-y-0.5">
                               <p className="text-gray-550 font-serif">📅 Entrée : {new Date(item.admissionDate).toLocaleDateString()}</p>
                               {item.dischargeDate ? (
@@ -2474,12 +2662,16 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                               )}
                             </div>
                           </td>
-                          <td className="p-4 max-w-xs truncate" title={item.reason}>
+                          <td 
+                            onClick={() => handleHospCellClick("reason", item)}
+                            className="p-4 max-w-xs truncate cursor-pointer hover:underline hover:text-indigo-700 transition" 
+                            title="Consulter le rapport médical d'admission, constantes SOS et avis initial"
+                          >
                             <span className="text-xs font-semibold text-gray-600 block line-clamp-1">{item.reason}</span>
                             {item.notes && <span className="text-[11px] text-slate-400 italic font-medium">Obs : {item.notes}</span>}
                           </td>
                           <td className="p-4 text-right">
-                            {item.status === "ADMITTED" && (userRole === "DOCTOR" || userRole === "NURSE" || userRole === "ADMIN") ? (
+                            {item.status === "ADMITTED" && canWriteHosp ? (
                               <div className="flex justify-end gap-2">
                                 <button
                                   onClick={() => loadClinicalWorkspace(item)}
@@ -2538,7 +2730,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
       {activeTab === "rooms" && !loading && (
         <div className="p-6 space-y-6 animate-fade-in">
           {/* Create room form panel toggle button */}
-          {(userRole === "ADMIN" || userRole === "DOCTOR") && (
+          {canWriteHosp && (
             <div className="flex md:justify-end">
               <button
                 onClick={() => {
@@ -2732,7 +2924,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                           </span>
                         </td>
                         <td className="p-4 text-right">
-                          {(userRole === "ADMIN" || userRole === "DOCTOR") && (
+                          {canWriteHosp && (
                             <div className="flex justify-end gap-1">
                               <button
                                 onClick={() => {
@@ -2778,7 +2970,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
       {activeTab === "beds" && !loading && (
         <div className="p-6 space-y-6 animate-fade-in">
           {/* Create bed trigger */}
-          {(userRole === "ADMIN" || userRole === "DOCTOR" || userRole === "NURSE") && (
+          {canWriteHosp && (
             <div className="flex md:justify-end">
               <button
                 onClick={() => {
@@ -2961,7 +3153,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                               <span className="sr-only sm:not-sr-only text-[10px]">Historique</span>
                             </button>
 
-                            {(userRole === "ADMIN" || userRole === "DOCTOR") && (
+                            {canWriteHosp && (
                               <>
                                 <button
                                   onClick={() => {
@@ -3122,7 +3314,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                         onChange={e => setTempRates({ ...tempRates, roomRates_VIP: Number(e.target.value) })}
                         className="w-full h-11 px-3 py-2 border border-gray-250 rounded-xl text-sm font-semibold focus:outline-none pr-12"
                         required
-                        disabled={userRole !== "ADMIN"}
+                        disabled={!isAdminHosp}
                       />
                       <span className="absolute right-3 top-3 text-[10px] font-extrabold text-gray-400">FCFA</span>
                     </div>
@@ -3137,7 +3329,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                         onChange={e => setTempRates({ ...tempRates, roomRates_Climatisée: Number(e.target.value) })}
                         className="w-full h-11 px-3 py-2 border border-gray-250 rounded-xl text-sm font-semibold focus:outline-none pr-12"
                         required
-                        disabled={userRole !== "ADMIN"}
+                        disabled={!isAdminHosp}
                       />
                       <span className="absolute right-3 top-3 text-[10px] font-extrabold text-gray-400">FCFA</span>
                     </div>
@@ -3172,7 +3364,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                         onChange={e => setTempRates({ ...tempRates, bedRates_VIP: Number(e.target.value) })}
                         className="w-full h-11 px-3 py-2 border border-gray-250 rounded-xl text-sm font-semibold focus:outline-none pr-12"
                         required
-                        disabled={userRole !== "ADMIN"}
+                        disabled={!isAdminHosp}
                       />
                       <span className="absolute right-3 top-3 text-[10px] font-extrabold text-gray-400">FCFA</span>
                     </div>
@@ -3187,7 +3379,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                         onChange={e => setTempRates({ ...tempRates, bedRates_Handicapé: Number(e.target.value) })}
                         className="w-full h-11 px-3 py-2 border border-gray-250 rounded-xl text-sm font-semibold focus:outline-none pr-12"
                         required
-                        disabled={userRole !== "ADMIN"}
+                        disabled={!isAdminHosp}
                       />
                       <span className="absolute right-3 top-3 text-[10px] font-extrabold text-gray-400">FCFA</span>
                     </div>
@@ -3208,7 +3400,7 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
                 </div>
               </div>
 
-              {userRole === "ADMIN" ? (
+              {isAdminHosp ? (
                 <div className="flex justify-end">
                   <button
                     type="submit"
@@ -3960,6 +4152,64 @@ export const HospitalizationTracker: React.FC<HospitalizationTrackerProps> = ({ 
           </div>
         );
       })()}
+      {/* Dynamic Modal for Everything is Clickable (TOUT EST CLIQUABLE) rule - Hospitalisation */}
+      {medisahelClickModal && medisahelClickModal.isOpen && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in" id="medisahel-clickable-modal">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-scale-in col-span-full">
+            <div className="p-5 border-b border-gray-150 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <span className="text-[9px] bg-indigo-100 text-indigo-800 border border-indigo-200 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                  {medisahelClickModal.badge || "MÉD_SAHEL SECURE"}
+                </span>
+                <h3 className="text-sm font-bold font-display text-slate-800 mt-1">{medisahelClickModal.title}</h3>
+                {medisahelClickModal.subtitle && (
+                  <p className="text-[11px] text-slate-500 font-medium font-sans mt-0.5">{medisahelClickModal.subtitle}</p>
+                )}
+              </div>
+              <button 
+                onClick={() => setMedisahelClickModal(null)}
+                className="p-1 px-2 border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg cursor-pointer transition font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[350px] overflow-y-auto w-full">
+              {medisahelClickModal.sections.map((sect: any, sIdx: number) => (
+                <div key={sIdx} className="space-y-2 text-left">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono block">
+                    {sect.title} :
+                  </span>
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 space-y-2.5">
+                    {sect.items.map((item: any, iIdx: number) => (
+                      <div key={iIdx} className="flex justify-between items-start gap-4 text-xs font-sans">
+                        <span className="text-slate-400 font-medium">{item.label}</span>
+                        <span className={`text-right text-slate-800 font-semibold ${item.mono ? "font-mono text-[10px]" : ""}`}>
+                          {item.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-gray-100 flex flex-wrap justify-end gap-2.5">
+              {medisahelClickModal.actions?.map((act: any, aIdx: number) => (
+                <button
+                  key={aIdx}
+                  onClick={act.onClick}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    act.primary 
+                      ? "bg-slate-800 hover:bg-slate-900 text-white shadow-md"
+                      : "bg-white hover:bg-slate-100 text-slate-705 border border-slate-200"
+                  }`}
+                >
+                  {act.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

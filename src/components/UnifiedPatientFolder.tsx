@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { exportToPDF } from "../utils/exportUtils";
 import { 
   User, FileText, Heart, ShieldAlert, Check, Printer, Share2, ClipboardList, 
   Layers, ShoppingCart, Truck, AlertTriangle, ShieldCheck, Mail, Phone, Globe, 
@@ -209,7 +210,7 @@ export const UnifiedPatientFolder: React.FC<UnifiedPatientFolderProps> = ({
 
         <div className="flex flex-wrap gap-2 text-xs font-mono">
           <button
-            onClick={() => window.print()}
+            onClick={() => exportToPDF("patient-dossier-print-section", "Dossier Consolidé - " + patient.lastName.toUpperCase() + " " + patient.firstName)}
             className="inline-flex items-center px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl border border-slate-300 cursor-pointer"
           >
             <Printer className="h-3.5 w-3.5 mr-1" />
@@ -316,7 +317,7 @@ export const UnifiedPatientFolder: React.FC<UnifiedPatientFolderProps> = ({
               <User className="h-4 w-4" />
               1. Identité & Fiche Administrative du Patient
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6 text-xs font-mono p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-y-4 gap-x-6 text-xs font-mono p-4 bg-slate-50 rounded-xl border border-slate-200">
               <div>
                 <span className="block text-[10px] uppercase text-slate-400">Numéro unique patient</span>
                 <strong className="text-slate-900">{patient.id}</strong>
@@ -334,16 +335,35 @@ export const UnifiedPatientFolder: React.FC<UnifiedPatientFolderProps> = ({
                 <strong className="text-slate-900">{patient.gender === "M" ? "Masculin (M)" : "Féminin (F)"}</strong>
               </div>
               <div>
-                <span className="block text-[10px] uppercase text-slate-400">Date de Naissance</span>
-                <strong className="text-slate-900">{patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString("fr-FR") : "Non spécifiée"}</strong>
+                <span className="block text-[10px] uppercase text-slate-400">Date de Naissance & Âge</span>
+                <strong className="text-slate-900">
+                  {patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString("fr-FR") : "Non spécifiée"} 
+                  {patient.dateOfBirth && <span className="ml-1 text-teal-850 font-sans font-bold bg-teal-50 px-1.5 py-0.5 rounded text-[10px]">({(() => {
+                    try {
+                      const birthday = new Date(patient.dateOfBirth);
+                      if (isNaN(birthday.getTime())) return "N/A";
+                      const today = new Date();
+                      let age = today.getFullYear() - birthday.getFullYear();
+                      const m = today.getMonth() - birthday.getMonth();
+                      if (m < 0 || (m === 0 && today.getDate() < birthday.getDate())) age--;
+                      return `${age} ans`;
+                    } catch (e) {
+                      return "N/A";
+                    }
+                  })()})</span>}
+                </strong>
               </div>
               <div>
                 <span className="block text-[10px] uppercase text-slate-400">Téléphone Mobile</span>
                 <strong className="text-slate-900">{patient.phone || "Non spécifié"}</strong>
               </div>
               <div>
-                <span className="block text-[10px] uppercase text-slate-400">Adresse de Résidence</span>
-                <strong className="text-slate-900">{patient.address || "Non spécifiée"}</strong>
+                <span className="block text-[10px] uppercase text-slate-400">Situation matrimoniale</span>
+                <strong className="text-slate-900">{patient.maritalStatus || "Célibataire"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Profession</span>
+                <strong className="text-slate-900">{patient.profession || "Non spécifiée"}</strong>
               </div>
               <div>
                 <span className="block text-[10px] uppercase text-slate-400">Nationalité</span>
@@ -354,8 +374,40 @@ export const UnifiedPatientFolder: React.FC<UnifiedPatientFolderProps> = ({
                 <strong className="text-slate-900">{patient.ethnie || "N/A"}</strong>
               </div>
               <div>
+                <span className="block text-[10px] uppercase text-slate-400">Langue principale</span>
+                <strong className="text-slate-900">{patient.language || "Bambara"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Adresse de Résidence</span>
+                <strong className="text-slate-900">{patient.address || "Non spécifiée"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Commune</span>
+                <strong className="text-slate-900">{patient.commune || "Non spécifiée"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Quartier</span>
+                <strong className="text-slate-900">{patient.quartier || "Non spécifié"}</strong>
+              </div>
+              <div>
                 <span className="block text-[10px] uppercase text-slate-400">Contact d'Urgence</span>
-                <strong className="text-slate-900">{patient.emergencyContact || "Non spécifié"}</strong>
+                <strong className="text-rose-700 font-sans font-bold">{patient.emergencyContact || "Non spécifié"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Numéro d’identité unique (NID)</span>
+                <strong className="text-slate-900">{patient.nationalId || "Non spécifié"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Numéro NINA</span>
+                <strong className="text-slate-900 font-mono text-[11px]">{patient.nina || "N/A"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Numéro AMO / CANAM</span>
+                <strong className="text-slate-900 font-mono text-[11px]">{patient.amo || "N/A"}</strong>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase text-slate-400">Numéro INPS</span>
+                <strong className="text-slate-900 font-mono text-[11px]">{patient.inps || "N/A"}</strong>
               </div>
               <div>
                 <span className="block text-[10px] uppercase text-slate-400">Date d'Ouverture du Dossier</span>

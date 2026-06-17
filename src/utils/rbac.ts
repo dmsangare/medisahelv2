@@ -29,7 +29,9 @@ export const ALL_MODULES = [
   { id: "documents", label: "Courriers & Archives (GECD)" },
   { id: "users", label: "Utilisateurs & Habilitations" },
   { id: "branding", label: "Paramètres Système" },
-  { id: "audit", label: "Rapports & Statistiques (Audit)" }
+  { id: "audit", label: "Rapports & Statistiques (Audit)" },
+  { id: "espace_dg", label: "Espace Promoteur / DG" },
+  { id: "surveillance_epidemio", label: "Surveillance Épidémiologique" }
 ];
 
 export const ALL_PERMISSIONS: GranularPermission[] = [
@@ -85,8 +87,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
   ],
 
   CASHIER: [
-    "patients:VIEW",
+    "patients:VIEW", "patients:CREATE", "patients:EDIT", "patients:PRINT",
     "billing:VIEW", "billing:CREATE", "billing:EDIT", "billing:PRINT", "billing:VALIDATE", "billing:CLOSE", "billing:EXPORT",
+    "pharmacy_sales:VIEW", "pharmacy_sales:CREATE", "pharmacy_sales:EDIT", "pharmacy_sales:PRINT",
+    "documents:VIEW", "documents:CREATE", "documents:EDIT", "documents:PRINT", "documents:ARCHIVE",
     "appointments:VIEW",
     "presences:VIEW"
   ],
@@ -129,7 +133,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
   GESTIONNAIRE_STOCK: [
     "patients:VIEW",
     "pharmacy:VIEW", "pharmacy:CREATE", "pharmacy:EDIT", "pharmacy:VALIDATE", "pharmacy:PRINT"
-  ]
+  ],
+
+  PROMOTEUR: ALL_MODULES.flatMap(m => ALL_PERMISSIONS.map(p => `${m.id}:${p}`)),
+  DG: ALL_MODULES.flatMap(m => ALL_PERMISSIONS.map(p => `${m.id}:${p}`))
 };
 
 // Check if a user has a specific granular permission for a module
@@ -140,14 +147,14 @@ export function userHasPermission(
 ): boolean {
   if (!user) return false;
 
-  // Level 1: Check if module is allowed globally (except for ADMIN)
-  if (user.role !== "ADMIN") {
+  // Level 1: Check if module is allowed globally (except for ADMIN, PROMOTEUR, and DG)
+  if (!["ADMIN", "PROMOTEUR", "DG"].includes(user.role)) {
     const allowed = user.allowedModules || [];
     if (!allowed.includes(moduleId)) {
       return false;
     }
   } else {
-    // ADMIN has absolute power
+    // ADMIN, PROMOTEUR, and DG have absolute power
     return true;
   }
 

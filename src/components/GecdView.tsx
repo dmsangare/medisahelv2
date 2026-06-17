@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
 import { MailRecord, Patient } from "../types";
+import { exportToExcel, exportToPDF } from "../utils/exportUtils";
 import { 
   FolderOpen, 
   Search, 
@@ -538,14 +539,52 @@ export default function GecdView({
         {/* Registry panel (2/3 size) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-3 font-semibold text-xs text-slate-800">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-2.5">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5 flex-wrap">
                 <Layers className="h-4 w-4 text-sky-650" />
                 Registre d'Archivage Scellé ({filteredMails.length} documents répertoriés)
               </h3>
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-100 py-0.5 px-1.5 rounded-md font-mono font-bold tracking-wide">
-                Prisma Backed
-              </span>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const dataToExport = filteredMails.map(m => ({
+                      num: m.numeroCourrier,
+                      type: m.type,
+                      expDest: m.expediteurDestinataire,
+                      obj: m.objet,
+                      service: m.serviceAffecte,
+                      statut: m.statutTraitement,
+                      date: m.dateReceptionEnvoi ? m.dateReceptionEnvoi.split("T")[0] : "",
+                      conf: m.isConfidentiel ? "Oui" : "Non"
+                    }));
+                    exportToExcel(dataToExport, "ARCHIVES_GECD_COURRIERS", {
+                      num: "Numéro de Courrier",
+                      type: "Type d'Acte",
+                      expDest: "Expéditeur / Destinataire",
+                      obj: "Objet",
+                      service: "Service Affecté",
+                      statut: "Statut de Traitement",
+                      date: "Date Général",
+                      conf: "Confidentiel"
+                    });
+                  }}
+                  className="inline-flex items-center px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer"
+                  title="Exporter l'index complet GECD en Excel"
+                >
+                  <Download className="h-3.5 w-3.5 mr-1 text-emerald-600" />
+                  Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportToPDF("gecd-scelled-registry-table", "Registre des Courriers & GECD Clinique")}
+                  className="inline-flex items-center px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer"
+                  title="Imprimer le registre"
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1 text-indigo-650" />
+                  Imprimer
+                </button>
+              </div>
             </div>
 
             {filteredMails.length === 0 ? (
@@ -555,7 +594,7 @@ export default function GecdView({
                 <p className="text-[10px] text-slate-400">Modifier les filtres supérieurs de correspondances.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3" id="gecd-scelled-registry-table">
                 {filteredMails.map((m) => {
                   const isEntrant = m.type === "Entrant";
                   const isMedical = m.type === "Médical";
@@ -730,13 +769,42 @@ export default function GecdView({
               />
             </div>
 
-            <button
-              onClick={handlePrintDocument}
-              className="w-full text-white font-bold p-2.5 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 text-xs transition-colors hover:bg-opacity-95 shadow-xs"
-              style={{ backgroundColor: accentColor }}
-            >
-              <Printer className="h-4 w-4" /> Imprimer & Archiver (Sceau GECD)
-            </button>
+            {/* Real printable container for this specific letter, hidden from standard view */}
+            <div className="hidden">
+              <div id="gecd-letter-printable-card" className="p-12 font-sans bg-white text-slate-950 uppercase" style={{ fontFamily: "serif", lineHeight: "1.6" }}>
+                <div className="text-center font-bold uppercase tracking-wider mb-8 border-b pb-4">
+                  <h2 className="text-lg text-slate-950">REPUBLIQUE DU MALI</h2>
+                  <p className="text-xs">Un Peuple - Un But - Une Foi</p>
+                  <p className="text-xs text-sky-700 mt-1 uppercase">MINISTÈRE DE LA SANTÉ ET DU DÉVELOPPEMENT SOCIAL</p>
+                </div>
+                <div style={{ whiteSpace: "pre-wrap", minHeight: "350px", textTransform: "none" }} className="text-sm">
+                  {getActiveText()}
+                </div>
+                <div className="mt-12 pt-6 border-t border-dashed flex justify-between text-xs font-mono text-slate-400 capitalize">
+                  <span>Médisahel Clinique de Bamako</span>
+                  <span>Sceau GECD de Transmission</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => exportToPDF("gecd-letter-printable-card", "Acte_Officiel_GECD_" + recipientName.split(" ").join("_"))}
+                className="flex-1 text-white font-bold p-2.5 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 text-xs transition-colors hover:bg-opacity-95 shadow-xs whitespace-nowrap"
+                style={{ backgroundColor: accentColor }}
+              >
+                <Printer className="h-4 w-4" /> Télécharger / PDF
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintDocument}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-350 rounded-xl text-xs font-bold shrink-0 cursor-pointer"
+                title="Imprimer par ouverture externe (nouvel onglet)"
+              >
+                Externe ↗
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -39,6 +39,7 @@ interface DocumentManagerProps {
   token: string | null;
   userRole: string; // The logged-in user's role from DB
   clinic?: any;
+  currentUser?: any;
 }
 
 interface GecdAnnotation {
@@ -97,7 +98,7 @@ interface GecdMetadata {
   validatorName?: string;
 }
 
-export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, userRole, clinic }) => {
+export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, userRole, clinic, currentUser }) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [clinicInfo, setClinicInfo] = useState<any>(null);
@@ -351,10 +352,11 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, userRol
   // Determine permissions based on computed role
   const currentComputedRole = getActiveRole();
   const activeUser = getActiveUserInfo();
+  const isGecdAllowed = currentUser?.allowedModules?.includes("documents") || false;
   const isDir = currentComputedRole === "DG" || currentComputedRole === "ADMIN";
   const isAdm = currentComputedRole === "ADMIN";
-  const isSec = currentComputedRole === "SECRETARIAT" || currentComputedRole === "ADMIN" || currentComputedRole === "HR";
-  const isChef = currentComputedRole === "CHEF_SERVICE" || currentComputedRole === "DOCTOR" || currentComputedRole === "ADMIN";
+  const isSec = currentComputedRole === "SECRETARIAT" || currentComputedRole === "ADMIN" || currentComputedRole === "HR" || currentComputedRole === "CASHIER" || isGecdAllowed;
+  const isChef = currentComputedRole === "CHEF_SERVICE" || currentComputedRole === "DOCTOR" || currentComputedRole === "ADMIN" || currentComputedRole === "CASHIER" || isGecdAllowed;
 
   // Dashboard calculations
   const todayStr = new Date().toISOString().substring(0, 10);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ArrowLeft, Plus, Check, ShieldAlert, FileText, ClipboardList, PenTool, Clipboard, HeartCrack, Printer, RefreshCw, Send, Smartphone, MessageCircle, History, FileSpreadsheet } from "lucide-react";
-import { Patient, MedicalRecord } from "../types.ts";
+import { Patient, MedicalRecord, User } from "../types.ts";
 
 interface MedicalRecordsDMEProps {
   token: string | null;
@@ -8,11 +8,13 @@ interface MedicalRecordsDMEProps {
   onBack: () => void;
   userRole: string;
   clinic?: any;
+  currentUser?: User | null;
 }
 
-export const MedicalRecordsDME: React.FC<MedicalRecordsDMEProps> = ({ token, patient, onBack, userRole, clinic }) => {
+export const MedicalRecordsDME: React.FC<MedicalRecordsDMEProps> = ({ token, patient, onBack, userRole, clinic, currentUser }) => {
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [receiptDispatches, setReceiptDispatches] = useState<any[]>([]);
+  const [fullDmeData, setFullDmeData] = useState<any>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({
     symptoms: "",
@@ -23,6 +25,9 @@ export const MedicalRecordsDME: React.FC<MedicalRecordsDMEProps> = ({ token, pat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [isDossierLocked, setIsDossierLocked] = useState(false);
+  const [dossierLockInfo, setDossierLockInfo] = useState<any>(null);
+  const [lockFeedback, setLockFeedback] = useState("");
   const [printingConsolidated, setPrintingConsolidated] = useState(false);
   const [labTests, setLabTests] = useState<any[]>([]);
   const [selectedLabTests, setSelectedLabTests] = useState<string[]>([]);
@@ -819,6 +824,7 @@ export const MedicalRecordsDME: React.FC<MedicalRecordsDMEProps> = ({ token, pat
       });
       if (dmeRes.ok) {
         const dmeData = await dmeRes.json();
+        setFullDmeData(dmeData);
         setReceiptDispatches(dmeData.receiptDispatches || []);
       }
 
@@ -856,14 +862,160 @@ export const MedicalRecordsDME: React.FC<MedicalRecordsDMEProps> = ({ token, pat
   };
 
   useEffect(() => {
+    // Recover user draft state on mount if present for this patient
+    if (patient.id && currentUser?.id) {
+      const savedDraft = localStorage.getItem(`medisahel_draft_${patient.id}_${currentUser.id}`);
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          setFormData(parsed);
+          setLockFeedback("Restauration Automatique : Votre brouillon en cours de rédaction a été restauré avec succès ! Raw data loaded.");
+          setTimeout(() => setLockFeedback(""), 8000);
+        } catch (e) {
+          console.warn("Could not load clinician draft:", e);
+        }
+      }
+    }
+  }, [patient.id, currentUser?.id]);
+
+  useEffect(() => {
+    // Automatically persist draft value when form fields are manipulated
+    if (patient.id && currentUser?.id && (formData.symptoms || formData.diagnosis || formData.prescription || formData.notes)) {
+      localStorage.setItem(
+        `medisahel_draft_${patient.id}_${currentUser.id}`,
+        JSON.stringify(formData)
+      );
+    }
+  }, [formData, patient.id, currentUser?.id]);
+
+  useEffect(() => {
+    // 1. Double check and acquire lock
+    const checkAndAcquireLock = async () => {
+      try {
+        const res = await fetch(`/api/patients/${patient.id}/lock`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const checkData = await res.json();
+          if (checkData.locked) {
+            if (checkData.lockInfo.userId !== currentUser?.id) {
+              setDossierLockInfo(checkData.lockInfo);
+              setIsDossierLocked(true);
+              return;
+            }
+          }
+        }
+
+        // Lock does not exist or was created by current user - attempt acquisition
+        const acqRes = await fetch(`/api/patients/${patient.id}/lock`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ patientName: `${patient.lastName.toUpperCase()} ${patient.firstName}` })
+        });
+        if (acqRes.status === 409) {
+          const acqData = await acqRes.json();
+          setDossierLockInfo(acqData.lockInfo);
+          setIsDossierLocked(true);
+        } else if (acqRes.ok) {
+          const acqData = await acqRes.json();
+          setDossierLockInfo(acqData.lockInfo);
+          setIsDossierLocked(false);
+        }
+      } catch (err) {
+        console.warn("Failed standard locking sequence - offline fallback.", err);
+      }
+    };
+
     fetchRecords();
     fetchDmgStaff();
-  }, [token, patient.id]);
+    checkAndAcquireLock();
+
+    // 2. Open Server-Sent Events (SSE) live connection for multi-window state synchronisation
+    const es = new EventSource("/api/realtime/stream");
+    
+    es.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "LOCK_CHANGE" && payload.data.patientId === patient.id) {
+          const info = payload.data.lockDetails;
+          if (info) {
+            if (info.userId !== currentUser?.id) {
+              setDossierLockInfo(info);
+              setIsDossierLocked(true);
+              if (payload.data.forced && payload.data.defenestratedUserId === currentUser?.id) {
+                setError(`ALERTE CONFLIT : Votre contrôle d'édition a été révoqué ! Le Dr. ${info.userName} a forcé la prise de contrôle sur cette fiche.`);
+              }
+            } else {
+              setDossierLockInfo(info);
+              setIsDossierLocked(false);
+            }
+          } else {
+            setDossierLockInfo(null);
+            setIsDossierLocked(false);
+          }
+        }
+
+        // Real-time automatic data synchronization when events are dispatched
+        if (payload.type === "DME_UPDATE" || payload.type === "LAB_TEST_UPDATE" || payload.type === "CARE_UPDATE") {
+          if (payload.data.patientId === patient.id) {
+            // Hot reload arrays directly from DB endpoints
+            fetchRecords();
+          }
+        }
+      } catch (e) {
+        console.warn("SSE frame processing warning:", e);
+      }
+    });
+
+    return () => {
+      es.close();
+      // On voluntary exit / closed tab, free up the patient folder immediately
+      fetch(`/api/patients/${patient.id}/lock?patientName=${patient.lastName.toUpperCase()} ${patient.firstName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => {});
+    };
+  }, [token, patient.id, currentUser]);
+
+  const handleForceLock = async () => {
+    try {
+      const res = await fetch(`/api/patients/${patient.id}/lock/force`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ patientName: `${patient.lastName.toUpperCase()} ${patient.firstName}` })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDossierLockInfo(data.lockInfo);
+        setIsDossierLocked(false);
+        setLockFeedback(`Prise de contrôle réussie ! Fiche verrouillée pour ${currentUser?.name || "votre session"}.`);
+        setError("");
+        fetchRecords();
+        setTimeout(() => setLockFeedback(""), 6000);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Échec de l'override de verrou.");
+      }
+    } catch (err) {
+      setError("Erreur communication de surpassement.");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    if (isDossierLocked) {
+      setError("Sécurité Concurrence : Le dossier est verrouillé par un autre médecin. Veuillez utiliser le bouton 'Forcer la prise de contrôle' si nécessaire.");
+      return;
+    }
 
     if (!formData.symptoms || !formData.diagnosis || !formData.prescription) {
       setError("Les symptômes, le diagnostic et l'ordonnance de prescription sont obligatoires.");
@@ -967,6 +1119,9 @@ export const MedicalRecordsDME: React.FC<MedicalRecordsDMEProps> = ({ token, pat
       }
 
       setFormData({ symptoms: "", diagnosis: "", prescription: "", notes: "" });
+      try {
+        localStorage.removeItem(`medisahel_draft_${patient.id}_${currentUser?.id}`);
+      } catch (e) {}
       setShowAddForm(false);
       fetchRecords();
     } catch (err: any) {
@@ -1040,6 +1195,165 @@ export const MedicalRecordsDME: React.FC<MedicalRecordsDMEProps> = ({ token, pat
           <h2 className="font-sans font-bold text-xl text-gray-900 leading-none mt-0.5">
             Dossier Médical Électronique (DME)
           </h2>
+        </div>
+      </div>
+
+      {/* 4. VERROUILLAGE INTELLIGENT */}
+      {isDossierLocked && (
+        <div className="bg-amber-50 border border-amber-250 p-4 rounded-xl shadow-xs space-y-2 flex flex-col md:flex-row md:items-center md:justify-between animate-fade-in" id="concurrency-lock-alert">
+          <div className="flex items-start md:items-center space-x-3 text-slate-900">
+            <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5 md:mt-0 animate-pulse" />
+            <div>
+              <p className="font-sans font-bold text-xs">🔒 Accès Concomitant Limité (Sécurisé par le Serveur)</p>
+              <p className="text-[11.5px] text-gray-700 mt-1 leading-relaxed">
+                Ce dossier est actuellement verrouillé et édité par le <strong>{dossierLockInfo?.role || "Médecin"} {dossierLockInfo?.userName || "Inconnu"}</strong> depuis le {dossierLockInfo?.lockedAt ? new Date(dossierLockInfo.lockedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "quelques minutes"}.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-1.5 text-[9px] font-mono opacity-85">
+                <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">Station: {dossierLockInfo?.userAgent ? (dossierLockInfo.userAgent.length > 40 ? dossierLockInfo.userAgent.slice(0, 40) + "..." : dossierLockInfo.userAgent) : "Poste de consultation"}</span>
+                <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">IP source: {dossierLockInfo?.ipAddress || "127.0.0.1"}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0 self-end md:self-center mt-3 md:mt-0">
+            <button
+              type="button"
+              onClick={handleForceLock}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[10.5px] cursor-pointer shadow-sm transition-all flex items-center gap-1.5"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Forcer la prise de contrôle (Tracé)
+            </button>
+            <span className="text-[10px] bg-slate-200 text-slate-800 font-bold px-2 py-1 rounded-lg">Lecture Seule active</span>
+          </div>
+        </div>
+      )}
+
+      {lockFeedback && (
+        <div className="p-3 bg-emerald-50 border border-emerald-150 text-emerald-800 text-[11px] font-sans font-bold rounded-xl flex items-center animate-bounce">
+          <Check className="h-4 w-4 mr-2 text-emerald-600" />
+          {lockFeedback}
+        </div>
+      )}
+
+      {/* 5. PARCOURS PATIENT INTERACTIF COMPLET */}
+      <div className="bg-white border border-gray-150 rounded-2xl shadow-enterprise p-5 space-y-4" id="dme-patient-journey">
+        <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+          <div>
+            <h4 className="font-sans font-extrabold text-slate-900 text-xs uppercase tracking-wide">Parcours Clinique Intégré & Suivi de Soins</h4>
+            <p className="text-[11px] font-sans text-gray-500 mt-0.5">Suivi séquentiel d'hospitalisation et d'analyses. Cliquez sur une étape pour consulter le volet d'origine.</p>
+          </div>
+          <span className="text-[9px] bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded-full font-mono font-black uppercase">MédiSahel Workflow</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2 text-center text-[10px] py-1 font-sans">
+          {[
+            { 
+              label: "Admissions", 
+              active: true, 
+              step: "1", 
+              done: !!patient.id, 
+              desc: "Admis GECD" 
+            },
+            { 
+              label: "Facture Consult", 
+              active: true, 
+              step: "2", 
+              done: !!(records.length > 0 || fullDmeData?.transactions?.some((t: any) => t.description.toLowerCase().includes("consultation") || t.amount > 0)), 
+              desc: records.length > 0 ? "Réglé" : "En caisse" 
+            },
+            { 
+              label: "Consult DMG", 
+              active: records.length > 0, 
+              step: "3", 
+              done: records.length > 0, 
+              desc: records.length > 0 ? "DME Synchro" : "A programmer" 
+            },
+            { 
+              label: "Prescriptions", 
+              active: records.length > 0, 
+              step: "4", 
+              done: records.length > 0 && records.some(r => r.prescription && r.prescription.trim().length > 5), 
+              desc: records.some(r => r.prescription && r.prescription.trim().length > 5) ? "Validé" : "En attente" 
+            },
+            { 
+              label: "Facture Exam", 
+              active: labTests.length > 0, 
+              step: "5", 
+              done: !!(labTests.length > 0 && (fullDmeData?.transactions?.some((t: any) => t.description.toLowerCase().includes("examen") || t.description.toLowerCase().includes("analyse") || t.description.toLowerCase().includes("lab")) || labTests.some(t => t.status !== "PENDING_PAYMENT"))), 
+              desc: labTests.length > 0 ? "Caisse" : "A éditer" 
+            },
+            { 
+              label: "Paiement Labo", 
+              active: labTests.length > 0, 
+              step: "6", 
+              done: labTests.length > 0 && labTests.some(t => t.status !== "PENDING_PAYMENT"), 
+              desc: labTests.some(t => t.status !== "PENDING_PAYMENT") ? "Acquitté" : "Non réglé" 
+            },
+            { 
+              label: "Prélèvement", 
+              active: labTests.some(t => t.status === "PROCESSING" || t.status === "VALIDATED"), 
+              step: "7", 
+              done: labTests.some(t => t.status === "PROCESSING" || t.status === "VALIDATED"), 
+              desc: labTests.some(t => t.status === "PROCESSING" || t.status === "VALIDATED") ? "Réalisé" : "Technique" 
+            },
+            { 
+              label: "Résultats Labo", 
+              active: labTests.some(t => t.status === "VALIDATED"), 
+              step: "8", 
+              done: labTests.some(t => t.status === "VALIDATED"), 
+              desc: labTests.some(t => t.status === "VALIDATED") ? "Scellé Biol" : "Non validé" 
+            },
+            { 
+              label: "Retour DMG", 
+              active: records.length > 1, 
+              step: "9", 
+              done: records.length > 1, 
+              desc: records.length > 1 ? "Mise à jour" : "Avis" 
+            },
+            { 
+              label: "Ordonnance", 
+              active: !!(fullDmeData?.pharmacyPrescriptions?.length > 0), 
+              step: "10", 
+              done: !!(fullDmeData?.pharmacyPrescriptions?.length > 0), 
+              desc: fullDmeData?.pharmacyPrescriptions?.length > 0 ? "Dispensation" : "En attente" 
+            },
+            { 
+              label: "Pharmacie", 
+              active: !!(fullDmeData?.pharmacySales?.length > 0), 
+              step: "11", 
+              done: !!(fullDmeData?.pharmacySales?.length > 0), 
+              desc: fullDmeData?.pharmacySales?.length > 0 ? "Servi" : "Livrable" 
+            },
+            { 
+              label: "Sortie & GECD", 
+              active: !!(fullDmeData?.hospitalizations?.length > 0), 
+              step: "12", 
+              done: !!(fullDmeData?.hospitalizations?.some((h: any) => h.status === "DISCHARGED" || h.dischargeDate !== null)), 
+              desc: fullDmeData?.hospitalizations?.some((h: any) => h.status === "DISCHARGED" || h.dischargeDate !== null) ? "Archivé" : "Hospitalisé active/Externe" 
+            }
+          ].map((stage, i) => (
+            <div 
+              key={i} 
+              onClick={() => {
+                setLockFeedback(`Consultation interactive sécurisée d'origine pour l'étape : ${stage.label}`);
+                setTimeout(() => setLockFeedback(""), 4000);
+              }}
+              className={`p-2 rounded-xl border flex flex-col justify-between items-center transition-all cursor-pointer hover:border-teal-400 ${
+                stage.done 
+                  ? "bg-emerald-50 border-emerald-250 text-emerald-950 font-black scale-100 shadow-2xs" 
+                  : stage.active
+                    ? "bg-teal-50/50 border-teal-200 text-teal-900"
+                    : "bg-gray-50 border-gray-150 text-gray-400"
+              }`}
+            >
+              <div className="text-[8px] font-mono opacity-50 mb-0.5">#{stage.step}</div>
+              <div className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] uppercase font-black font-mono mx-auto mb-1 bg-white border border-slate-200 shadow-3xs">
+                {stage.done ? "✓" : stage.step}
+              </div>
+              <p className="truncate font-sans tracking-tight text-[8px] w-full mt-1">{stage.label}</p>
+              <span className="text-[7.5px] font-mono opacity-80 mt-1 block leading-none">{stage.desc}</span>
+            </div>
+          ))}
         </div>
       </div>
 

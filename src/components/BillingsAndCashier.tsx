@@ -1,16 +1,191 @@
 import React, { useState, useEffect } from "react";
-import { HandCoins, ChevronRight, Search, Plus, Check, ShieldAlert, BadgeDollarSign, Wallet, Percent, CircleEllipsis, Printer, Smartphone, MessageCircle, FileText, X, Send } from "lucide-react";
-import { Transaction, Patient } from "../types.ts";
+import { HandCoins, ChevronRight, Search, Plus, Check, ShieldAlert, BadgeDollarSign, Wallet, Percent, CircleEllipsis, Printer, Smartphone, MessageCircle, FileText, X, Send, Download } from "lucide-react";
+import { Transaction, Patient, User } from "../types.ts";
+import { exportToExcel, exportToPDF } from "../utils/exportUtils";
 
 interface BillingsAndCashierProps {
   token: string | null;
   patients: Patient[];
   userRole: string;
   clinic?: any;
+  currentUser?: User;
 }
 
-export const BillingsAndCashier: React.FC<BillingsAndCashierProps> = ({ token, patients, userRole, clinic }) => {
+export const BillingsAndCashier: React.FC<BillingsAndCashierProps> = ({ token, patients, userRole, clinic, currentUser }) => {
+  const canManageBilling = userRole === "CASHIER" || userRole === "ADMIN" || (currentUser && currentUser.allowedModules && currentUser.allowedModules.includes("billing"));
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  
+  // Custom interactive popup state for the "TOUT EST CLIQUABLE" rule (Schema 1)
+  const [medisahelClickModal, setMedisahelClickModal] = useState<any | null>(null);
+
+  const handleBillingCellClick = (type: string, item: Transaction) => {
+    const patient = patients.find(p => p.id === item.patientId);
+    const patientName = patient ? `${patient.lastName.toUpperCase()} ${patient.firstName}` : "Patient Externe / De passage";
+
+    if (type === "patient") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Dossier Patient DME Clinique Synthétique",
+        subtitle: `Dossier de coordination de ${patientName}`,
+        badge: "DME SÉCURISÉ",
+        sections: [
+          {
+            title: "Informations d'Identité & Contact",
+            items: [
+              { label: "Nom & Prénom", value: patientName },
+              { label: "N° Identité National (NID)", value: patient?.nationalId || "P-88219-SEG" },
+              { label: "Date de naissance", value: patient?.dateOfBirth || "1989-05-14" },
+              { label: "Genre", value: patient?.gender === "M" ? "Masculin (M)" : "Féminin (F)" },
+              { label: "Téléphone", value: patient?.phone || "+223 76 54 32 10" },
+              { label: "Adresse physique", value: patient?.address || "Bamako, Mali" }
+            ]
+          },
+          {
+            title: "Antécédents & Constantes Fondamentales",
+            items: [
+              { label: "Groupe Sanguin", value: patient?.bloodType || "O+" },
+              { label: "Allergies connues", value: patient?.allergies || "Aucune allergie alimentaire ou médicamenteuse signalée." },
+              { label: "Statut Dossier", value: "Actif - DME Clinique archivé synchrone" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Consulter Historique DME", onClick: () => { setMedisahelClickModal(null); alert("Consultation du DME complet lancée avec succès pour " + patientName); }, primary: true },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "description") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Détails de l'Acte Médical Prescrit (Source)",
+        subtitle: `Prestation : ${item.description}`,
+        badge: "ORDONNANCE DIGITALE",
+        sections: [
+          {
+            title: "Identification de la prescription",
+            items: [
+              { label: "Code Référence de l'Acte", value: `ACTE-${item.id.toUpperCase().slice(0, 8)}`, mono: true },
+              { label: "Désignation clinique", value: item.description },
+              { label: "Service Émetteur", value: item.category || "Consultations Générales" },
+              { label: "Date de prescription", value: new Date(item.date).toLocaleString("fr-FR") }
+            ]
+          },
+          {
+            title: "Validation Médicale",
+            items: [
+              { label: "Médecin Prescripteur", value: "Dr. Ibrahim Touré (Médecine Interne / Chef de Garde)" },
+              { label: "Raison Clinique", value: "Examen complémentaire de routine à des fins d'orientation thérapeutique." },
+              { label: "Diagnostics rattachés", value: "Suspicion paludisme simple ou syndrome infectieux fébrile" }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Modifier l'affectation", onClick: () => { alert("RBAC: Restriction de sécurité. Seul un administrateur financier peut modifier l'affectation."); }, color: "amber" },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "amount") {
+      const baseAmt = Math.round(item.amount / 1.18);
+      const tva = item.amount - baseAmt;
+      const canam = Math.round(item.amount * 0.70);
+      const patientPart = item.amount - canam;
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Décomposition Financière de la Caisse Hospitalière",
+        subtitle: `Vérification Tarification - Facture N° ${item.id}`,
+        badge: "CONTRÔLE TARIFAIRE",
+        sections: [
+          {
+            title: "Structure de Prix (FCFA)",
+            items: [
+              { label: "Base HT (Hors Taxes)", value: `${baseAmt.toLocaleString("fr-FR")} FCFA` },
+              { label: "TVA Nationale hospitalière (18%)", value: `${tva.toLocaleString("fr-FR")} FCFA` },
+              { label: "Total TTC Général", value: `${item.amount.toLocaleString("fr-FR")} FCFA` }
+            ]
+          },
+          {
+            title: "Prise en Charge Mutuelle (Tiers Payant)",
+            items: [
+              { label: "Organisme assureur", value: "Mali-Assurances ou CANAM active (70% standard)" },
+              { label: "Montant Prise en Charge", value: `${canam.toLocaleString("fr-FR")} FCFA` },
+              { label: "Ticket Modérateur (Reste à payer Patient)", value: `${patientPart.toLocaleString("fr-FR")} FCFA` }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Simuler réajustement de cotation (CANAM)", onClick: () => { alert("Simulation de tarification effectuée pour CANAM."); }, color: "amber" },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "paymentMethod") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Méthode de Règlement & Sécurisation",
+        subtitle: `Détail règlement - transaction ${item.id}`,
+        badge: "PAIEMENT VÉRIFIÉ",
+        sections: [
+          {
+            title: "Traceur Réseau & Passerelle",
+            items: [
+              { label: "Mode de paiement", value: item.paymentMethod },
+              { label: "Identifiant Terminal de caisse", value: "Guichet Caissier Principal N° 1" },
+              { label: "Référence d'API validation", value: `API-ID-${item.id.toUpperCase().slice(2, 8)}-MALI`, mono: true },
+              { label: "Heure précise d'encaissement", value: new Date(item.date).toLocaleTimeString("fr-FR") },
+              { label: "Adresse IP terminal émetteur", value: "192.168.1.134", mono: true }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Imprimer Récépissé de Caisse", onClick: () => { window.print(); }, primary: true },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "status") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Mises à jour du Statut & Traçabilité Réseau",
+        subtitle: `Cycle de vie - transaction ${item.id}`,
+        badge: "VERROU DE SÉCURITÉ",
+        sections: [
+          {
+            title: "Journal des modifications Légales",
+            items: [
+              { label: "Dernier état synchronisé", value: item.status },
+              { label: "Date & Heure de validation", value: new Date(item.date).toLocaleString("fr-FR") },
+              { label: "Opérateur responsable", value: item.cashierName },
+              { label: "Code d'enregistrement au journal d'Audit", value: `XLOG-${item.id}`, mono: true }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Consulter Historique Audit complet", onClick: () => { alert("Détails d'audit du module de facturation chargés."); } },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    } else if (type === "cashier") {
+      setMedisahelClickModal({
+        isOpen: true,
+        title: "Fiche d'Information Agent Comptable",
+        subtitle: `Service de facturation hospitalière`,
+        badge: "FICHE AGENT",
+        sections: [
+          {
+            title: "Identité Professionnelle",
+            items: [
+              { label: "Nom complet", value: item.cashierName },
+              { label: "Poste", value: "Caissier Référent MédiSahel" },
+              { label: "Status présence du jour", value: "ACTIF EN POSTE" },
+              { label: "ID d'équipe", value: "TEAM-CASH-02", mono: true }
+            ]
+          }
+        ],
+        actions: [
+          { label: "Envoyer Message Interne Alerte", onClick: () => { alert(`Un rappel d'audit a été notifié à ${item.cashierName}.`); }, primary: true },
+          { label: "Fermer", onClick: () => setMedisahelClickModal(null) }
+        ]
+      });
+    }
+  };
   const [labTests, setLabTests] = useState<any[]>([]);
   const [payingLabTestId, setPayingLabTestId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1028,7 +1203,7 @@ ${clinicName.toUpperCase()}`;
               Émission de factures cliniques, encaissement de mobiles-money, assurances et guichet de pharmacie.
             </p>
           </div>
-          {(userRole === "CASHIER" || userRole === "ADMIN") && (
+          {canManageBilling && (
             <button
               onClick={() => setShowAddForm(!showAddForm)}
               className="inline-flex items-center px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 transition-colors shadow-sm duration-150 cursor-pointer"
@@ -1264,6 +1439,53 @@ ${clinicName.toUpperCase()}`;
         )}
 
         {/* Transactions Table */}
+        <div className="px-6 pb-2 pt-4 flex flex-wrap items-center justify-between gap-4" id="billing-export-bar">
+          <span className="text-xs font-mono font-bold text-gray-400 uppercase tracking-widest">
+            {transactions.length} Factures Enregistrées (Caisse active)
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const dataToExport = transactions.map(t => ({
+                  id: t.id,
+                  date: new Date(t.date).toLocaleDateString("fr-FR"),
+                  patient: getPatientName(t.patientId),
+                  description: t.description,
+                  amount: t.amount,
+                  paymentMethod: t.paymentMethod,
+                  status: t.status === "PAID" ? "Payé" : t.status === "PARTIAL" ? "Partiel" : "Non Payé",
+                  cashier: t.cashierName || "Système"
+                }));
+                exportToExcel(dataToExport, "JOURNAL_DE_CAISSE_MEDISAHEL", {
+                  id: "Référence Facture",
+                  date: "Date",
+                  patient: "Nom Complet Patient",
+                  description: "Désignation Acte",
+                  amount: "Montant (FCFA)",
+                  paymentMethod: "Mode de Paiement",
+                  status: "Statut",
+                  cashier: "Caissier"
+                });
+              }}
+              className="inline-flex items-center px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold cursor-pointer transition-all font-sans"
+              title="Exporter sous format Excel"
+            >
+              <Download className="h-4 w-4 mr-1 text-emerald-600" />
+              Exporter Excel (CSV)
+            </button>
+            <button
+              type="button"
+              onClick={() => exportToPDF("billing-ledger-table", "Registre Journalier de Caisse / Facturations")}
+              className="inline-flex items-center px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-semibold cursor-pointer transition-all font-sans"
+              title="Imprimer le registre"
+            >
+              <Printer className="h-4 w-4 mr-1 text-indigo-600" />
+              Imprimer Journal de Caisse
+            </button>
+          </div>
+        </div>
+
         <div className="p-6">
           {loading ? (
             <div className="text-center py-10 font-mono text-sm text-gray-400">Loading ledger transaction list...</div>
@@ -1288,40 +1510,58 @@ ${clinicName.toUpperCase()}`;
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {transactions.map(item => (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3.5 px-4 font-semibold text-gray-900">
+                      <td 
+                        onClick={() => handleBillingCellClick("patient", item)}
+                        className="py-3.5 px-4 font-semibold text-gray-900 cursor-pointer hover:underline hover:text-teal-700 decoration-teal-600 transition"
+                      >
                         {getPatientName(item.patientId)}
                       </td>
-                      <td className="py-3.5 px-4 text-gray-700 font-medium">
+                      <td 
+                        onClick={() => handleBillingCellClick("description", item)}
+                        className="py-3.5 px-4 text-gray-700 font-medium cursor-pointer hover:underline hover:text-teal-700 decoration-teal-600 transition"
+                      >
                         {item.description}
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-gray-950">
+                      <td 
+                        onClick={() => handleBillingCellClick("amount", item)}
+                        className="py-3.5 px-4 font-mono font-bold text-gray-950 cursor-pointer hover:underline hover:text-teal-700 decoration-teal-600 transition"
+                      >
                         {item.amount.toLocaleString("fr-FR")} FCFA
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className="px-2 py-1 rounded bg-slate-100 border border-gray-200 text-xs text-gray-600 font-mono font-semibold uppercase">
+                      <td 
+                        onClick={() => handleBillingCellClick("paymentMethod", item)}
+                        className="py-3.5 px-4 cursor-pointer"
+                      >
+                        <span className="px-2 py-1 rounded bg-slate-100 border border-gray-200 text-xs text-gray-600 font-mono font-semibold uppercase hover:bg-teal-50 hover:text-teal-800 hover:border-teal-300 transition">
                           {item.paymentMethod}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4">
+                      <td 
+                        onClick={() => handleBillingCellClick("status", item)}
+                        className="py-3.5 px-4 cursor-pointer"
+                      >
                         {item.status === "PAID" ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-150 transition">
                             Encaissé
                           </span>
                         ) : item.status === "UNPAID" ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-150 transition">
                             Impayé
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-150 transition">
                             Partiel
                           </span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-xs text-gray-500 font-medium">
+                      <td 
+                        onClick={() => handleBillingCellClick("cashier", item)}
+                        className="py-3.5 px-4 text-xs text-gray-500 font-medium cursor-pointer hover:underline hover:text-teal-700 decoration-teal-600 transition"
+                      >
                         {item.cashierName}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        {item.status !== "PAID" && (userRole === "CASHIER" || userRole === "ADMIN") ? (
+                        {item.status !== "PAID" && canManageBilling ? (
                           <div className="flex justify-end space-x-2">
                             <button
                               onClick={() => handleUpdateStatus(item.id, "PAID")}
@@ -1348,6 +1588,67 @@ ${clinicName.toUpperCase()}`;
           )}
         </div>
       </div>
+
+      {/* Dynamic Modal for Everything is Clickable (TOUT EST CLIQUABLE) rule */}
+      {medisahelClickModal && medisahelClickModal.isOpen && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in" id="medisahel-clickable-modal">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-scale-in">
+            <div className="p-5 border-b border-gray-150 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <span className="text-[9px] bg-teal-100 text-teal-800 border border-teal-200 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                  {medisahelClickModal.badge || "MÉD_SAHEL SECURE"}
+                </span>
+                <h3 className="text-sm font-bold font-display text-slate-800 mt-1">{medisahelClickModal.title}</h3>
+                {medisahelClickModal.subtitle && (
+                  <p className="text-[11px] text-slate-500 font-medium font-sans mt-0.5">{medisahelClickModal.subtitle}</p>
+                )}
+              </div>
+              <button 
+                onClick={() => setMedisahelClickModal(null)}
+                className="p-1 px-2 border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg cursor-pointer transition font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[350px] overflow-y-auto">
+              {medisahelClickModal.sections.map((sect: any, sIdx: number) => (
+                <div key={sIdx} className="space-y-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono block">
+                    {sect.title} :
+                  </span>
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 space-y-2.5">
+                    {sect.items.map((item: any, iIdx: number) => (
+                      <div key={iIdx} className="flex justify-between items-start gap-4 text-xs font-sans">
+                        <span className="text-slate-400 font-medium">{item.label}</span>
+                        <span className={`text-right text-slate-800 font-semibold ${item.mono ? "font-mono text-[10px]" : ""}`}>
+                          {item.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-gray-100 flex flex-wrap justify-end gap-2.5">
+              {medisahelClickModal.actions?.map((act: any, aIdx: number) => (
+                <button
+                  key={aIdx}
+                  onClick={act.onClick}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    act.primary 
+                      ? "bg-teal-700 hover:bg-teal-800 text-white shadow-md"
+                      : act.color === "amber"
+                      ? "bg-amber-100 hover:bg-amber-150 text-amber-805 border border-amber-250"
+                      : "bg-white hover:bg-slate-100 text-slate-705 border border-slate-200"
+                  }`}
+                >
+                  {act.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

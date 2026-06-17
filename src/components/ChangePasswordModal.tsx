@@ -29,8 +29,19 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ token,
       return;
     }
 
-    if (newPassword.length < 6) {
-      setError("Le nouveau mot de passe doit comporter au moins 6 caractères pour des raisons de sécurité clinique.");
+    if (newPassword.length < 8) {
+      setError("Le nouveau mot de passe doit comporter au moins 8 caractères.");
+      return;
+    }
+
+    const hasUppercase = /[A-Z]/.test(newPassword);
+    const hasDecimal = /[0-9]/.test(newPassword);
+    if (!hasUppercase) {
+      setError("Le nouveau mot de passe doit contenir au moins une lettre majuscule.");
+      return;
+    }
+    if (!hasDecimal) {
+      setError("Le nouveau mot de passe doit contenir au moins un chiffre.");
       return;
     }
 
@@ -69,9 +80,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ token,
           <div className="h-12 w-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto">
             <KeyRound className="h-6 w-6" />
           </div>
-          <h2 className="font-sans font-black text-xl text-slate-900 tracking-tight">Régénération Obrigatoire du Mot de passe</h2>
+          <h2 className="font-sans font-black text-xl text-slate-900 tracking-tight uppercase">CHANGEMENT DE MOT DE PASSE OBLIGATOIRE</h2>
           <p className="text-xs text-gray-500 leading-relaxed font-sans font-medium px-4">
-            Pour des raisons de conformité réglementaire de l'établissement, vous devez modifier votre mot de passe provisoire avant d'accéder aux dossiers cliniques.
+            Pour des raisons de conformité et de sécurité, vous devez obligatoirement modifier votre mot de passe temporaire pour accéder au système de soins.
           </p>
         </div>
 
@@ -104,13 +115,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ token,
           <div className="h-px bg-gray-100" />
 
           <div>
-            <label className="block text-[10px] text-gray-500 uppercase tracking-widest mb-1.5">Nouveau mot de passe de sécurité</label>
+            <label className="block text-[10px] text-gray-500 uppercase tracking-widest mb-1.5 font-bold">Nouveau mot de passe de sécurité</label>
             <input
               type="password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
               className="w-full h-11 px-3 py-2 bg-slate-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-rose-500 text-sm focus:outline-none"
-              placeholder="Minimum 6 caractères"
+              placeholder="Minimum 8 caractères (1 majuscule, 1 chiffre)"
             />
           </div>
 
@@ -128,9 +139,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ token,
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-slate-900 hover:bg-slate-950 text-white rounded-xl text-xs font-bold font-mono tracking-wider shadow-md uppercase transition-all duration-150 cursor-pointer"
+            className="w-full py-3 bg-red-650 hover:bg-red-700 text-white rounded-xl text-xs font-black font-mono tracking-wider shadow-md uppercase transition-all duration-150 cursor-pointer"
           >
-            {loading ? "Chiffrement en cours..." : "Confirmer le Nouveau Mot de Passe"}
+            {loading ? "Mise à jour en cours..." : "VALIDER"}
           </button>
         </form>
       </div>
