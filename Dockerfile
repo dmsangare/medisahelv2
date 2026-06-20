@@ -5,12 +5,6 @@
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
-# Install system dependencies needed for Prisma and compiling native tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install build dependencies
 COPY package*.json ./
 RUN npm install
@@ -30,12 +24,6 @@ RUN npm prune --omit=dev
 # --- Stage 2: Production Runner Stage ---
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
-
-# Install runtime dependencies (OpenSSL is critical for Prisma binary queries)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
 # Set production configurations and correct port binding
 ENV NODE_ENV=production
